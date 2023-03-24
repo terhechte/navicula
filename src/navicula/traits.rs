@@ -48,27 +48,23 @@ pub trait Reducer {
     /// Provide the initial state
     fn initial_state() -> Self::State;
 
-    /// Provide the environment
-    fn environment(&self) -> &Self::Environment;
+    // Provide the environment
+    // fn environment(&self) -> &Self::Environment;
 }
 
-pub trait ChildReducer: Reducer {
-    type Parent: Reducer;
+pub trait ChildReducer<Parent: Reducer>: Reducer {
+    // type Parent: Reducer;
 
-    fn to_child(
-        message: <<Self as ChildReducer>::Parent as Reducer>::Message,
-    ) -> Option<<Self as Reducer>::Action>;
+    fn to_child(message: <Parent as Reducer>::Message) -> Option<<Self as Reducer>::Action>;
 
-    fn from_child(
-        message: <Self as Reducer>::DelegateMessage,
-    ) -> Option<<Self::Parent as Reducer>::Action>;
+    fn from_child(message: <Self as Reducer>::DelegateMessage) -> Option<Parent::Action>;
 }
 
 pub trait IntoAction<Action> {
     fn into_action(self) -> Action;
 }
 
-pub trait EnvironmentType: Clone {
+pub trait EnvironmentType {
     type AppEvent;
 }
 
@@ -84,9 +80,10 @@ pub struct VviewStore<'a, R: Reducer> {
     // actions: &'a mut R::Action,
     //updater: Box<dyn Fn()>,
     // sender: ActionSender<R::Action>,
-    state: &'a R::State,
+    state: Ref<'a, R::State>,
+    environment: &'a R::Environment,
     // FIXME: Myabe mutable, for child-senders
-    runtime: &'a mut Rruntime<R>,
+    runtime: &'a UseRef<Rruntime<R>>,
 }
 
 struct Rruntime<R: Reducer> {
@@ -131,21 +128,20 @@ impl<Action: Clone> ActionSender<Action> {
 
 impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
     // FIXME: Figure out the reset_state!
-    pub async fn host<'b, ChildR: Reducer<Environment = ParentR::Environment>, T>(
-        &'a mut self,
-        cx: Scope<'b, T>,
-        state: impl Fn() -> ChildR::State + 'static,
-        environment: impl Fn() -> ChildR::Environment,
-        to_child: impl Fn(ParentR::Message) -> Option<ChildR::Action> + 'static,
-        from_child: impl Fn(ChildR::DelegateMessage) -> Option<ParentR::Action> + 'static,
-        reducer: ChildR,
-    ) -> Element<'a>
+    pub fn host<ChildR: ChildReducer<ParentR, Environment = ParentR::Environment>, T>(
+        &'a self,
+        cx: Scope<'a, T>,
+        // reducer: ChildR,
+        // root: fn(Scope<'a, T>, store: VviewStore<'a, ChildR>) -> Element<'a>,
+        //) -> Element<'a>
+    ) -> VviewStore<'a, ChildR>
     where
+        // 'a: 'b,
         ChildR: 'static,
         ParentR: 'static,
     {
-        let child_state = use_ref(cx, || state());
-        let environment = use_ref(cx, || environment());
+        let child_state = use_ref(cx, || ChildR::initial_state());
+        let environment = self.environment;
 
         // FIXME: reset_state
         // let reset_state = false;
@@ -156,13 +152,14 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         let (child_sender, child_receiver) = cx.use_hook(|| flume::unbounded());
 
         let scope_id = cx.scope_id().0;
-        let parent_sender = self.runtime.sender.clone();
+        let mut parent_runtime = self.runtime.write_silent();
+        let parent_sender = parent_runtime.sender.clone();
 
         // Allow the child to send `DelegateMessage` messages
         // to the parent
         let delegate_sender = cx.use_hook(|| {
             move |action| {
-                let Some(converted) = from_child(action) else {
+                let Some(converted) = ChildR::from_child(action) else {
                 return
             };
                 parent_sender.send(converted);
@@ -175,22 +172,22 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         let cloned_child_sender = child_sender.clone();
         cx.use_hook(|| {
             let sender = Rc::new(move |action| {
-                let Some(child_message) = to_child(action) else {
+                let Some(child_message) = ChildR::to_child(action) else {
                     return
                 };
                 cloned_child_sender.send(child_message);
                 updater();
             });
-            if self.runtime.child_senders.contains_key(&scope_id) {
+            if parent_runtime.child_senders.contains_key(&scope_id) {
                 println!("ERROR: Hosted two child reducers in the same scope");
                 println!("{}", include_str!("error_message.txt"));
             }
-            self.runtime.child_senders.insert(scope_id, sender);
+            parent_runtime.child_senders.insert(scope_id, sender);
         });
 
         // FIXME: Communicate from a callback? (check where this is used)
 
-        let mut context: ReducerContext<'b, ChildR> = ReducerContext {
+        let mut context: ReducerContext<'a, ChildR> = ReducerContext {
             action_receiver: child_receiver,
             receivers: Default::default(),
             delegate_messages: &*delegate_sender,
@@ -209,14 +206,54 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
             environment,
             child_sender,
             None,
-            reducer,
+            // reducer,
         );
 
-        panic!()
+        // root(cx, view_store)
+        view_store
     }
 }
 
 // pub trait HostChild
+
+pub fn root<'a, R: Reducer, T>(
+    cx: Scope<'a, T>,
+    // reducer: R,
+    environment: &'a R::Environment,
+) -> VviewStore<'a, R>
+where
+    R: 'static,
+{
+    let state = use_ref(cx, || R::initial_state());
+
+    let (child_sender, action_receiver) = cx.use_hook(|| flume::unbounded());
+
+    let scope_id = cx.scope_id().0;
+
+    // FIXME: Root shouldn't have delegate_sender. move to child only
+    let delegate_sender = cx.use_hook(|| move |action| {});
+
+    let mut context: ReducerContext<'a, R> = ReducerContext {
+        action_receiver,
+        receivers: Default::default(),
+        delegate_messages: &*delegate_sender,
+        child_messages: Vec::new(),
+        window: AppWindow::retrieve(&cx),
+        timers: Default::default(),
+    };
+
+    let view_store = rrun(
+        cx,
+        &mut context,
+        state,
+        environment,
+        child_sender,
+        None,
+        // reducer,
+    );
+
+    view_store
+}
 
 // FIXME: Reducers always send `Actions` which are then converted to `DelegateMessage` if they
 // come from a Child or to `Message` if they come from a parent
@@ -242,14 +279,14 @@ pub struct ReducerContext<'a, R: Reducer> {
 //     }
 // }
 
-async fn rrun<'a, T, R: Reducer + 'static>(
+fn rrun<'a, T, R: Reducer + 'static>(
     cx: Scope<'a, T>,
     context: &mut ReducerContext<'a, R>,
     state: &'a UseRef<R::State>,
-    environment: &'a UseRef<R::Environment>,
+    environment: &'a R::Environment,
     action_sender: &'a mut flume::Sender<R::Action>,
     external_events: Option<Vec<Box<dyn IntoMessageSender<R::Message>>>>,
-    reducer: R,
+    // reducer: R,
 ) -> VviewStore<'a, R>
 // where
 //     R: 'static,
@@ -318,18 +355,18 @@ async fn rrun<'a, T, R: Reducer + 'static>(
     }
 
     // Read all events that have been sent
-    for action in context.action_receiver.iter() {
+    for action in context.action_receiver.try_iter() {
         known_actions.push(action);
     }
     // Read all external events
     if let Some(ref receiver) = external_receiver {
-        for action in receiver.iter() {
+        for action in receiver.try_iter() {
             known_actions.push(action);
         }
     }
     // Read all other receiver events
     for receiver in context.receivers.values() {
-        for action in receiver.iter() {
+        for action in receiver.try_iter() {
             known_actions.push(action);
         }
     }
@@ -357,11 +394,10 @@ async fn rrun<'a, T, R: Reducer + 'static>(
     let mut effects: Vec<_> = known_actions.drain(0..).map(Effect::Action).collect();
 
     if !effects.is_empty() {
-        let mut current_runtime = runtime.write_silent();
-
-        let environment = environment.read();
+        // let mut current_runtime = runtime.write_silent();
 
         loop {
+            println!("loooop");
             let mut additions: Vec<Effect<'_, R::Action>> = Vec::with_capacity(2);
             for effect in effects.drain(0..) {
                 match effect {
@@ -457,6 +493,7 @@ async fn rrun<'a, T, R: Reducer + 'static>(
                     }
                 }
             }
+            println!("additions {}", additions.len());
             if !additions.is_empty() {
                 effects.append(&mut additions);
                 continue;
@@ -479,7 +516,13 @@ async fn rrun<'a, T, R: Reducer + 'static>(
     //     }
     // }
 
-    panic!()
+    println!("le done");
+
+    VviewStore {
+        state: state.read(),
+        environment,
+        runtime,
+    }
 }
 
 /// Simple Hashable
