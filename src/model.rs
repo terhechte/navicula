@@ -23,12 +23,14 @@ impl EnvironmentType for Environment {
     type AppEvent = AppEvent;
 }
 
+#[derive(Clone)]
 pub struct Chat {
     pub id: u64,
     pub with: String,
     pub messages: Vec<Message>,
 }
 
+#[derive(Clone)]
 pub enum Message {
     Send(String),
     Received(String),

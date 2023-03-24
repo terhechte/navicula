@@ -1,9 +1,12 @@
 use dioxus::prelude::*;
 
-use crate::navicula::{
-    self,
-    traits::{ReducerContext, VviewStore},
-    Effect,
+use crate::{
+    model::Chat,
+    navicula::{
+        self,
+        traits::{ReducerContext, VviewStore},
+        Effect,
+    },
 };
 
 pub struct RootReducer {
@@ -45,7 +48,7 @@ pub enum Action {
 
 pub struct State {
     counter: usize,
-    selected: Option<u64>,
+    selected: Option<Chat>,
 }
 
 impl State {
@@ -86,11 +89,17 @@ impl navicula::traits::Reducer for RootReducer {
             }
             Action::Load => state.counter += 1,
             Action::Selected(item) => {
-                state.selected = Some(item);
+                let chats = environment.chats();
+                let chat = chats.iter().find(|s| s.id == item);
+                state.selected = chat.cloned();
             }
             Action::Reload => {
                 println!("handle reload");
                 context.send_children(Message::Reload);
+            }
+            Action::ClosedMessage => {
+                println!("closed chat");
+                state.selected = None;
             }
         }
         Effect::Nothing
@@ -104,18 +113,45 @@ impl navicula::traits::Reducer for RootReducer {
 #[inline_props]
 pub fn Root<'a>(cx: Scope<'a>, store: VviewStore<'a, RootReducer>) -> Element<'a> {
     println!("re-render root");
-    let item = store.selected.map(|s| rsx!("Selected {s}"));
+    let item = store.selected.as_ref().map(|s| {
+        rsx!(crate::message::Root {
+            store: store.host(cx, || crate::message::State::new(s.clone())),
+        })
+    });
     render! {
         div {
-            "Root!",
-            crate::sidebar::Root {
-                store: store.host(cx, || crate::sidebar::State::new())
+            display: "flex",
+            flex_direction: "row",
+            Sidebar {
+                store: store
             }
-            item
+            SelectedMessage {
+                store: store,
+            }
             span {
                 onclick: move |_| store.send(Action::Reload),
                 "Lets talk to our children"
             }
         }
+    }
+}
+
+#[inline_props]
+fn Sidebar<'a>(cx: Scope<'a>, store: &'a VviewStore<'a, RootReducer>) -> Element<'a> {
+    render! {
+        crate::sidebar::Root {
+            store: store.host(cx, || crate::sidebar::State::new())
+        }
+    }
+}
+
+#[inline_props]
+fn SelectedMessage<'a>(cx: Scope<'a>, store: &'a VviewStore<'a, RootReducer>) -> Element<'a> {
+    render! {
+        store.selected.as_ref().map(|s| {
+        rsx!(crate::message::Root {
+            store: store.host(cx, || crate::message::State::new(s.clone())),
+        })
+    })
     }
 }
