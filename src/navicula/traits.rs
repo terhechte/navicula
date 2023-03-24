@@ -17,10 +17,9 @@ use async_trait::async_trait;
 use super::{run, types::AppWindow, Effect, ViewStore};
 
 pub trait Reducer {
-    // type Context = ReducerContext<Self::Action, Self::Message, Self::DelegateMessage>;
     /// A reducer can be messaged from a parent.
     /// `Messages` are send parent to child
-    type Message: Clone + IntoAction<Self::Action>;
+    type Message: Clone; // + IntoAction<Self::Action>;
 
     /// This type is used to delegate from a Child Reducer
     /// back to its parent. The parent can then decide whether
@@ -63,9 +62,9 @@ pub trait ChildReducer<Parent: Reducer>: Reducer {
     fn from_child(message: <Self as Reducer>::DelegateMessage) -> Option<Parent::Action>;
 }
 
-pub trait IntoAction<Action> {
-    fn into_action(self) -> Action;
-}
+// pub trait IntoAction<Action> {
+//     fn into_action(self) -> Action;
+// }
 
 pub trait EnvironmentType {
     type AppEvent;
@@ -194,6 +193,7 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         cx.use_hook(|| {
             let sender = Rc::new(move |action| {
                 let Some(child_message) = ChildR::to_child(action) else {
+                    println!("failed to convert action for child");
                     return
                 };
                 cloned_child_sender.send(child_message);
@@ -309,9 +309,9 @@ impl<'a, Action, Message: Clone, DelegateMessage>
     }
 
     pub fn send_children(&self, message: Message) {
-        self.child_messages
-            .iter()
-            .map(|child| child(message.clone()));
+        for child in self.child_messages.iter() {
+            (*child)(message.clone());
+        }
     }
 }
 
@@ -350,7 +350,8 @@ fn rrun<'a, T, R: Reducer + 'static>(
             let (external_sender, external_receiver) = flume::unbounded::<R::Action>();
             let cloned_updater = updater.clone();
             let wrapped_sender = Arc::new(move |message: R::Message| {
-                external_sender.send(message.into_action());
+                // FIXME: Change
+                // external_sender.send(message.into_action());
                 cloned_updater();
             });
 
@@ -384,12 +385,15 @@ fn rrun<'a, T, R: Reducer + 'static>(
             .collect();
     }
 
-    let mut known_actions = Vec::new();
+    let mut known_actions = cx.use_hook(|| {
+        if let Some(initial_action) = R::initial_action() {
+            vec![initial_action]
+        } else {
+            Vec::new()
+        }
+    });
 
     // Get the initial action
-    if let Some(initial_action) = R::initial_action() {
-        known_actions.push(initial_action);
-    }
 
     // Read all events that have been sent
     for action in context.action_receiver.try_iter() {
@@ -436,7 +440,6 @@ fn rrun<'a, T, R: Reducer + 'static>(
         let mut current_state = unsafe { state.assume_init_mut() };
 
         loop {
-            println!("loooop");
             let mut additions: Vec<Effect<'_, R::Action>> = Vec::with_capacity(2);
             for effect in effects.drain(0..) {
                 match effect {
@@ -531,7 +534,6 @@ fn rrun<'a, T, R: Reducer + 'static>(
                     }
                 }
             }
-            println!("additions {}", additions.len());
             if !additions.is_empty() {
                 effects.append(&mut additions);
                 continue;
@@ -553,8 +555,6 @@ fn rrun<'a, T, R: Reducer + 'static>(
     //         events.push(action);
     //     }
     // }
-
-    println!("le done");
 
     unsafe {
         VviewStore {

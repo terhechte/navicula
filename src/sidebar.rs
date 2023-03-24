@@ -4,7 +4,7 @@ use crate::{
     model::Chat,
     navicula::{
         self,
-        traits::{IntoAction, Reducer, ReducerContext, VviewStore},
+        traits::{Reducer, ReducerContext, VviewStore},
     },
 };
 use dioxus::prelude::*;
@@ -15,23 +15,24 @@ pub struct ChildReducer {
 
 pub struct State {
     chats: Rc<Vec<Chat>>,
+    counter: usize,
 }
 
 #[derive(Clone)]
 pub enum Message {}
 
-impl IntoAction<Action> for Message {
-    fn into_action(self) -> Action {
-        Action::Initial
-    }
-}
+// impl IntoAction<Action> for Message {
+//     fn into_action(self) -> Action {
+//         Action::Initial
+//     }
+// }
 
 #[derive(Clone)]
 pub enum DelegateMessage {
     Selected(u64),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Action {
     Initial,
     Select(u64),
@@ -55,10 +56,14 @@ impl navicula::traits::Reducer for ChildReducer {
         state: &'a mut Self::State,
         environment: &'a Self::Environment,
     ) -> navicula::Effect<'b, Self::Action> {
+        dbg!(&action);
         match action {
             Action::Initial => {}
             Action::Select(a) => context.send_parent(DelegateMessage::Selected(a)),
-            Action::Reload => {}
+            Action::Reload => {
+                println!("reload!");
+                state.counter += 1;
+            }
         }
         navicula::Effect::Nothing
     }
@@ -70,6 +75,7 @@ impl navicula::traits::Reducer for ChildReducer {
     fn initial_state(environment: &Self::Environment) -> Self::State {
         State {
             chats: environment.chats(),
+            counter: 0,
         }
     }
 
@@ -99,8 +105,9 @@ impl navicula::traits::ChildReducer<crate::root::RootReducer> for ChildReducer {
 
 #[inline_props]
 pub fn Root<'a>(cx: Scope<'a>, store: VviewStore<'a, ChildReducer>) -> Element<'a> {
+    println!("re-render child");
     render! {
-        "Child!"
+        "Child! {store.counter}",
         span {
             onclick: move |_| store.send(Action::Select(1)),
             "Select"

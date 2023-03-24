@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use crate::navicula::{
     self,
-    traits::{IntoAction, ReducerContext, VviewStore},
+    traits::{ReducerContext, VviewStore},
     Effect,
 };
 
@@ -23,11 +23,11 @@ pub enum Message {
     Reload,
 }
 
-impl IntoAction<Action> for Message {
-    fn into_action(self) -> Action {
-        Action::Message(self)
-    }
-}
+// impl IntoAction<Action> for Message {
+//     fn into_action(self) -> Action {
+//         Action::Message(self)
+//     }
+// }
 
 #[derive(Clone)]
 pub enum DelegateMessage {
@@ -38,7 +38,7 @@ pub enum DelegateMessage {
 pub enum Action {
     Initial,
     Load,
-    Message(Message),
+    Reload,
     Selected(u64),
 }
 
@@ -82,11 +82,12 @@ impl navicula::traits::Reducer for RootReducer {
                 return Effect::Action(Action::Load);
             }
             Action::Load => state.counter += 1,
-            Action::Message(m) => match m {
-                Message::Reload => state.counter = 0,
-            },
             Action::Selected(item) => {
                 state.selected = Some(item);
+            }
+            Action::Reload => {
+                println!("handle reload");
+                context.send_children(Message::Reload);
             }
         }
         Effect::Nothing
@@ -108,6 +109,10 @@ pub fn Root<'a>(cx: Scope<'a>, store: VviewStore<'a, RootReducer>) -> Element<'a
                 store: store.host(cx)
             }
             item
+            span {
+                onclick: move |_| store.send(Action::Reload),
+                "Lets talk to our children"
+            }
         }
     }
 }
