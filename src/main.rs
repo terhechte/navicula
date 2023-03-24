@@ -18,9 +18,7 @@ fn main() {
 pub struct AppProps {}
 
 pub fn App<'a>(cx: Scope<'a, AppProps>) -> Element<'a> {
-    let environment = use_state(cx, || model::Environment {
-        chats: model::mock::chats(),
-    });
+    let environment = use_state(cx, || model::Environment::new(model::mock::chats()));
     let store = navicula::traits::root(cx, environment.get());
     render! {
         root::Root {

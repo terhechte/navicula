@@ -1,6 +1,11 @@
-use crate::navicula::{
-    self,
-    traits::{IntoAction, Reducer, VviewStore},
+use std::rc::Rc;
+
+use crate::{
+    model::Chat,
+    navicula::{
+        self,
+        traits::{IntoAction, Reducer, VviewStore},
+    },
 };
 use dioxus::prelude::*;
 
@@ -8,13 +13,9 @@ pub struct ChildReducer {
     // environment: super::Environment,
 }
 
-impl ChildReducer {
-    pub fn new() -> Self {
-        ChildReducer {}
-    }
+pub struct State {
+    chats: Rc<Vec<Chat>>,
 }
-
-pub struct State;
 
 #[derive(Clone)]
 pub enum Message {}
@@ -26,11 +27,15 @@ impl IntoAction<Action> for Message {
 }
 
 #[derive(Clone)]
-pub enum DelegateMessage {}
+pub enum DelegateMessage {
+    Selected(u64),
+}
 
 #[derive(Clone)]
 pub enum Action {
     Initial,
+    Select(u64),
+    Reload,
 }
 
 impl navicula::traits::Reducer for ChildReducer {
@@ -56,8 +61,10 @@ impl navicula::traits::Reducer for ChildReducer {
         Some(Action::Initial)
     }
 
-    fn initial_state() -> Self::State {
-        State
+    fn initial_state(environment: &Self::Environment) -> Self::State {
+        State {
+            chats: environment.chats(),
+        }
     }
 
     // fn environment(&self) -> &Self::Environment {
@@ -65,13 +72,22 @@ impl navicula::traits::Reducer for ChildReducer {
     // }
 }
 
-impl<Parent: Reducer> navicula::traits::ChildReducer<Parent> for ChildReducer {
-    fn to_child(message: <Parent as Reducer>::Message) -> Option<<Self as Reducer>::Action> {
-        panic!()
+// Implement the conversion for the `Root` parent
+impl navicula::traits::ChildReducer<crate::root::RootReducer> for ChildReducer {
+    fn to_child(
+        message: <crate::root::RootReducer as Reducer>::Message,
+    ) -> Option<<Self as Reducer>::Action> {
+        match message {
+            crate::root::Message::Reload => Some(Action::Reload),
+        }
     }
 
-    fn from_child(message: <Self as Reducer>::DelegateMessage) -> Option<Parent::Action> {
-        todo!()
+    fn from_child(
+        message: <Self as Reducer>::DelegateMessage,
+    ) -> Option<<crate::root::RootReducer as Reducer>::Action> {
+        match message {
+            DelegateMessage::Selected(item) => Some(crate::root::Action::Selected(item)),
+        }
     }
 }
 
@@ -79,5 +95,9 @@ impl<Parent: Reducer> navicula::traits::ChildReducer<Parent> for ChildReducer {
 pub fn Root<'a>(cx: Scope<'a>, store: VviewStore<'a, ChildReducer>) -> Element<'a> {
     render! {
         "Child!"
+        span {
+            onclick: move |_| store.send(Action::Select(1)),
+            "Select"
+        }
     }
 }

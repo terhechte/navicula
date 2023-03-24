@@ -1,13 +1,21 @@
+use std::rc::Rc;
+
 use crate::navicula::traits::EnvironmentType;
 
 #[derive(Default)]
 pub struct Environment {
-    pub chats: Vec<Chat>,
+    chats: Rc<Vec<Chat>>,
 }
 
 impl Environment {
-    pub fn chats(&self) -> &[Chat] {
-        &self.chats
+    pub fn new(chats: Vec<Chat>) -> Self {
+        Self {
+            chats: Rc::new(chats),
+        }
+    }
+
+    pub fn chats(&self) -> Rc<Vec<Chat>> {
+        self.chats.clone()
     }
 }
 
@@ -16,6 +24,7 @@ impl EnvironmentType for Environment {
 }
 
 pub struct Chat {
+    pub id: u64,
     pub with: String,
     pub messages: Vec<Message>,
 }
@@ -34,6 +43,7 @@ pub mod mock {
     pub fn chats() -> Vec<Chat> {
         vec![
             Chat {
+                id: 1,
                 with: "Klaus".to_string(),
                 messages: vec![
                     Message::Send("Hey, how are you".to_string()),
@@ -45,6 +55,7 @@ pub mod mock {
                 ],
             },
             Chat {
+                id: 2,
                 with: "Hans".to_string(),
                 messages: vec![
                     Message::Send("Whats up".to_string()),
@@ -54,6 +65,7 @@ pub mod mock {
                 ],
             },
             Chat {
+                id: 3,
                 with: "Hans".to_string(),
                 messages: vec![Message::Received("Hey!".to_string())],
             },

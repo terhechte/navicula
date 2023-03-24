@@ -46,7 +46,7 @@ pub trait Reducer {
     fn initial_action() -> Option<Self::Action>;
 
     /// Provide the initial state
-    fn initial_state() -> Self::State;
+    fn initial_state(environment: &Self::Environment) -> Self::State;
 
     // Provide the environment
     // fn environment(&self) -> &Self::Environment;
@@ -84,6 +84,20 @@ pub struct VviewStore<'a, R: Reducer> {
     environment: &'a R::Environment,
     // FIXME: Myabe mutable, for child-senders
     runtime: &'a UseRef<Rruntime<R>>,
+}
+
+impl<'a, R: Reducer> VviewStore<'a, R> {
+    pub fn send(&self, action: R::Action) {
+        self.runtime.read().sender.send(action);
+    }
+}
+
+impl<'a, R: Reducer> std::ops::Deref for VviewStore<'a, R> {
+    type Target = R::State;
+
+    fn deref(&self) -> &Self::Target {
+        self.state.deref()
+    }
 }
 
 struct Rruntime<R: Reducer> {
@@ -140,8 +154,8 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         ChildR: 'static,
         ParentR: 'static,
     {
-        let child_state = use_ref(cx, || ChildR::initial_state());
         let environment = self.environment;
+        let child_state = use_ref(cx, || ChildR::initial_state(&environment));
 
         // FIXME: reset_state
         // let reset_state = false;
@@ -224,7 +238,7 @@ pub fn root<'a, R: Reducer, T>(
 where
     R: 'static,
 {
-    let state = use_ref(cx, || R::initial_state());
+    let state = use_ref(cx, || R::initial_state(environment));
 
     let (child_sender, action_receiver) = cx.use_hook(|| flume::unbounded());
 
