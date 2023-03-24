@@ -47,8 +47,8 @@ pub trait Reducer {
     /// Define the initial action when the reducer starts up
     fn initial_action() -> Option<Self::Action>;
 
-    /// Provide the initial state
-    fn initial_state(environment: &Self::Environment) -> Self::State;
+    // Provide the initial state
+    // fn initial_state(environment: &Self::Environment) -> Self::State;
 
     // Provide the environment
     // fn environment(&self) -> &Self::Environment;
@@ -148,9 +148,7 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
     pub fn host<ChildR: ChildReducer<ParentR, Environment = ParentR::Environment>, T>(
         &'a self,
         cx: Scope<'a, T>,
-        // reducer: ChildR,
-        // root: fn(Scope<'a, T>, store: VviewStore<'a, ChildR>) -> Element<'a>,
-        //) -> Element<'a>
+        state: impl FnOnce() -> ChildR::State,
     ) -> VviewStore<'a, ChildR>
     where
         // 'a: 'b,
@@ -160,7 +158,7 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         let environment = self.environment;
         let child_state = cx.use_hook(|| unsafe {
             //Cell::new(Some(ChildR::initial_state(&environment)))
-            MaybeUninit::new(ChildR::initial_state(&environment))
+            MaybeUninit::new(state())
         });
 
         // FIXME: reset_state
@@ -246,12 +244,13 @@ pub fn root<'a, R: Reducer, T>(
     cx: Scope<'a, T>,
     // reducer: R,
     environment: &'a R::Environment,
+    state: impl FnOnce() -> R::State,
 ) -> VviewStore<'a, R>
 where
     R: 'static,
 {
     //let state = cx.use_hook(|| Cell::new(Some(R::initial_state(environment))));
-    let state = cx.use_hook(|| MaybeUninit::new(R::initial_state(environment)));
+    let state = cx.use_hook(|| MaybeUninit::new(state()));
 
     let (child_sender, action_receiver) = cx.use_hook(|| flume::unbounded());
 

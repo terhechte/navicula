@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use crate::{
-    model::Chat,
+    model::{Chat, Environment},
     navicula::{
         self,
         traits::{Reducer, ReducerContext, VviewStore},
@@ -16,6 +16,15 @@ pub struct ChildReducer {
 pub struct State {
     chats: Rc<Vec<Chat>>,
     counter: usize,
+}
+
+impl State {
+    pub fn new() -> Self {
+        State {
+            chats: Default::default(),
+            counter: 0,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -58,7 +67,9 @@ impl navicula::traits::Reducer for ChildReducer {
     ) -> navicula::Effect<'b, Self::Action> {
         dbg!(&action);
         match action {
-            Action::Initial => {}
+            Action::Initial => {
+                state.chats = environment.chats();
+            }
             Action::Select(a) => context.send_parent(DelegateMessage::Selected(a)),
             Action::Reload => {
                 println!("reload!");
@@ -70,13 +81,6 @@ impl navicula::traits::Reducer for ChildReducer {
 
     fn initial_action() -> Option<Self::Action> {
         Some(Action::Initial)
-    }
-
-    fn initial_state(environment: &Self::Environment) -> Self::State {
-        State {
-            chats: environment.chats(),
-            counter: 0,
-        }
     }
 
     // fn environment(&self) -> &Self::Environment {

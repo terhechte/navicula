@@ -40,11 +40,21 @@ pub enum Action {
     Load,
     Reload,
     Selected(u64),
+    ClosedMessage,
 }
 
 pub struct State {
     counter: usize,
     selected: Option<u64>,
+}
+
+impl State {
+    pub fn new() -> Self {
+        State {
+            counter: 0,
+            selected: None,
+        }
+    }
 }
 
 impl navicula::traits::Reducer for RootReducer {
@@ -57,13 +67,6 @@ impl navicula::traits::Reducer for RootReducer {
     type State = State;
 
     type Environment = crate::model::Environment;
-
-    fn initial_state(environment: &Self::Environment) -> Self::State {
-        State {
-            counter: 0,
-            selected: None,
-        }
-    }
 
     // Provide the environment
     // fn environment(&self) -> &Self::Environment {
@@ -106,7 +109,7 @@ pub fn Root<'a>(cx: Scope<'a>, store: VviewStore<'a, RootReducer>) -> Element<'a
         div {
             "Root!",
             crate::sidebar::Root {
-                store: store.host(cx)
+                store: store.host(cx, || crate::sidebar::State::new())
             }
             item
             span {
