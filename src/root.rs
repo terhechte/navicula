@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use crate::navicula::{
     self,
-    traits::{IntoAction, VviewStore},
+    traits::{IntoAction, ReducerContext, VviewStore},
     Effect,
 };
 
@@ -71,6 +71,7 @@ impl navicula::traits::Reducer for RootReducer {
     // }
 
     fn reduce<'a, 'b>(
+        context: &'a ReducerContext<'a, Self::Action, Self::Message, Self::DelegateMessage>,
         action: Self::Action,
         state: &'a mut Self::State,
         environment: &'a Self::Environment,
@@ -98,15 +99,15 @@ impl navicula::traits::Reducer for RootReducer {
 
 #[inline_props]
 pub fn Root<'a>(cx: Scope<'a>, store: VviewStore<'a, RootReducer>) -> Element<'a> {
+    println!("re-render root");
+    let item = store.selected.map(|s| rsx!("Selected {s}"));
     render! {
         div {
             "Root!",
             crate::sidebar::Root {
                 store: store.host(cx)
             }
-            if let Some(item) = store.selected {
-                "Selected {item}"
-            }
+            item
         }
     }
 }

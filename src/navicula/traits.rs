@@ -3,9 +3,10 @@ use futures_util::Future;
 use futures_util::{future::BoxFuture, StreamExt};
 use fxhash::FxHashMap;
 use std::any::Any;
-use std::cell::{Ref, RefMut};
+use std::cell::{Cell, Ref, RefMut};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::{rc::Rc, sync::Arc};
@@ -16,6 +17,7 @@ use async_trait::async_trait;
 use super::{run, types::AppWindow, Effect, ViewStore};
 
 pub trait Reducer {
+    // type Context = ReducerContext<Self::Action, Self::Message, Self::DelegateMessage>;
     /// A reducer can be messaged from a parent.
     /// `Messages` are send parent to child
     type Message: Clone + IntoAction<Self::Action>;
@@ -37,6 +39,7 @@ pub trait Reducer {
     type Environment: EnvironmentType;
 
     fn reduce<'a, 'b>(
+        context: &'a ReducerContext<'a, Self::Action, Self::Message, Self::DelegateMessage>,
         action: Self::Action,
         state: &'a mut Self::State,
         environment: &'a Self::Environment,
@@ -80,7 +83,8 @@ pub struct VviewStore<'a, R: Reducer> {
     // actions: &'a mut R::Action,
     //updater: Box<dyn Fn()>,
     // sender: ActionSender<R::Action>,
-    state: Ref<'a, R::State>,
+    //state: Ref<'a, R::State>,
+    state: &'a R::State,
     environment: &'a R::Environment,
     // FIXME: Myabe mutable, for child-senders
     runtime: &'a UseRef<Rruntime<R>>,
@@ -155,7 +159,10 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         ParentR: 'static,
     {
         let environment = self.environment;
-        let child_state = use_ref(cx, || ChildR::initial_state(&environment));
+        let child_state = cx.use_hook(|| unsafe {
+            //Cell::new(Some(ChildR::initial_state(&environment)))
+            MaybeUninit::new(ChildR::initial_state(&environment))
+        });
 
         // FIXME: reset_state
         // let reset_state = false;
@@ -201,7 +208,12 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
 
         // FIXME: Communicate from a callback? (check where this is used)
 
-        let mut context: ReducerContext<'a, ChildR> = ReducerContext {
+        let mut context: ReducerContext<
+            'a,
+            ChildR::Action,
+            ChildR::Message,
+            ChildR::DelegateMessage,
+        > = ReducerContext {
             action_receiver: child_receiver,
             receivers: Default::default(),
             delegate_messages: &*delegate_sender,
@@ -238,7 +250,8 @@ pub fn root<'a, R: Reducer, T>(
 where
     R: 'static,
 {
-    let state = use_ref(cx, || R::initial_state(environment));
+    //let state = cx.use_hook(|| Cell::new(Some(R::initial_state(environment))));
+    let state = cx.use_hook(|| MaybeUninit::new(R::initial_state(environment)));
 
     let (child_sender, action_receiver) = cx.use_hook(|| flume::unbounded());
 
@@ -247,14 +260,15 @@ where
     // FIXME: Root shouldn't have delegate_sender. move to child only
     let delegate_sender = cx.use_hook(|| move |action| {});
 
-    let mut context: ReducerContext<'a, R> = ReducerContext {
-        action_receiver,
-        receivers: Default::default(),
-        delegate_messages: &*delegate_sender,
-        child_messages: Vec::new(),
-        window: AppWindow::retrieve(&cx),
-        timers: Default::default(),
-    };
+    let mut context: ReducerContext<'a, R::Action, R::Message, R::DelegateMessage> =
+        ReducerContext {
+            action_receiver,
+            receivers: Default::default(),
+            delegate_messages: &*delegate_sender,
+            child_messages: Vec::new(),
+            window: AppWindow::retrieve(&cx),
+            timers: Default::default(),
+        };
 
     let view_store = rrun(
         cx,
@@ -271,15 +285,15 @@ where
 
 // FIXME: Reducers always send `Actions` which are then converted to `DelegateMessage` if they
 // come from a Child or to `Message` if they come from a parent
-pub struct ReducerContext<'a, R: Reducer> {
+pub struct ReducerContext<'a, Action, Message, DelegateMessage> {
     /// The queue of next actions to this reducer
-    action_receiver: &'a flume::Receiver<R::Action>,
+    action_receiver: &'a flume::Receiver<Action>,
     /// Additional receivers from different sources, such as subscriptions
-    receivers: FxHashMap<u64, flume::Receiver<R::Action>>,
+    receivers: FxHashMap<u64, flume::Receiver<Action>>,
     /// Delegate messages to the parent
-    delegate_messages: &'a dyn Fn(R::DelegateMessage),
+    delegate_messages: &'a dyn Fn(DelegateMessage),
     /// Send messages to the child reducers
-    child_messages: Vec<Rc<dyn Fn(R::Message)>>,
+    child_messages: Vec<Rc<dyn Fn(Message)>>,
     /// Allow accessing the current window without `use_window`
     window: AppWindow<'a>,
     /// Currently running timers
@@ -287,16 +301,25 @@ pub struct ReducerContext<'a, R: Reducer> {
     // The reducer
 }
 
-// impl<'a, R: Reducer> ReducerContext<'a, R> {
-//     pub fn needs_update(&self) {
+impl<'a, Action, Message: Clone, DelegateMessage>
+    ReducerContext<'a, Action, Message, DelegateMessage>
+{
+    pub fn send_parent(&self, message: DelegateMessage) {
+        (self.delegate_messages)(message);
+    }
 
-//     }
-// }
+    pub fn send_children(&self, message: Message) {
+        self.child_messages
+            .iter()
+            .map(|child| child(message.clone()));
+    }
+}
 
 fn rrun<'a, T, R: Reducer + 'static>(
     cx: Scope<'a, T>,
-    context: &mut ReducerContext<'a, R>,
-    state: &'a UseRef<R::State>,
+    context: &mut ReducerContext<'a, R::Action, R::Message, R::DelegateMessage>,
+    //state: &'a mut Cell<Option<R::State>>,
+    state: &'a mut MaybeUninit<R::State>,
     environment: &'a R::Environment,
     action_sender: &'a mut flume::Sender<R::Action>,
     external_events: Option<Vec<Box<dyn IntoMessageSender<R::Message>>>>,
@@ -410,6 +433,8 @@ fn rrun<'a, T, R: Reducer + 'static>(
     if !effects.is_empty() {
         // let mut current_runtime = runtime.write_silent();
 
+        let mut current_state = unsafe { state.assume_init_mut() };
+
         loop {
             println!("loooop");
             let mut additions: Vec<Effect<'_, R::Action>> = Vec::with_capacity(2);
@@ -420,9 +445,8 @@ fn rrun<'a, T, R: Reducer + 'static>(
                         panic!()
                     }
                     Effect::Action(action) => {
-                        let mut current_state = state.write_silent();
                         let next =
-                            R::reduce(action, current_state.deref_mut(), environment.deref());
+                            R::reduce(&*context, action, &mut current_state, environment.deref());
                         additions.push(next);
                         continue;
                     }
@@ -532,10 +556,12 @@ fn rrun<'a, T, R: Reducer + 'static>(
 
     println!("le done");
 
-    VviewStore {
-        state: state.read(),
-        environment,
-        runtime,
+    unsafe {
+        VviewStore {
+            state: state.assume_init_ref(),
+            environment,
+            runtime,
+        }
     }
 }
 

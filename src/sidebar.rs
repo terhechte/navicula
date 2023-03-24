@@ -4,7 +4,7 @@ use crate::{
     model::Chat,
     navicula::{
         self,
-        traits::{IntoAction, Reducer, VviewStore},
+        traits::{IntoAction, Reducer, ReducerContext, VviewStore},
     },
 };
 use dioxus::prelude::*;
@@ -50,10 +50,16 @@ impl navicula::traits::Reducer for ChildReducer {
     type Environment = crate::model::Environment;
 
     fn reduce<'a, 'b>(
+        context: &'a ReducerContext<'a, Self::Action, Self::Message, Self::DelegateMessage>,
         action: Self::Action,
         state: &'a mut Self::State,
         environment: &'a Self::Environment,
     ) -> navicula::Effect<'b, Self::Action> {
+        match action {
+            Action::Initial => {}
+            Action::Select(a) => context.send_parent(DelegateMessage::Selected(a)),
+            Action::Reload => {}
+        }
         navicula::Effect::Nothing
     }
 
