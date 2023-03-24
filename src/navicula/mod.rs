@@ -2,6 +2,7 @@
 pub mod event_receiver;
 //pub mod menu;
 //pub mod notify;
+pub mod traits;
 mod types;
 
 use types::AppWindow;
@@ -25,14 +26,18 @@ use futures_util::{future::BoxFuture, Future, FutureExt, StreamExt};
 use itertools::Itertools;
 // pub use notify::{Notifier, ScopeNotifyExt};
 
-use self::event_receiver::{
-    ActionEventReceiver, AppEvent, DefaultEventReceiver, EventReceiver, TimerEventReceiver,
+use self::{
+    event_receiver::{
+        ActionEventReceiver, AppEvent, DefaultEventReceiver, EventReceiver, TimerEventReceiver,
+    },
+    traits::AnyHashable,
 };
 
 pub enum Effect<'a, A> {
     Future(BoxFuture<'a, A>),
     Action(A),
-    Subscription(Box<dyn EventReceiver<A>>),
+    // Subscription(Box<dyn EventReceiver<A>>),
+    Subscription(flume::Receiver<A>, AnyHashable),
     Multiple(Vec<Effect<'a, A>>),
     Nothing,
     /// Execute the following javascript, ignore the result
@@ -40,8 +45,8 @@ pub enum Effect<'a, A> {
     /// Execute the following javascript, but also get the result back and convert into an action
     UiFuture(Pin<Box<dyn Future<Output = Option<A>> + 'static>>),
     /// Maybe a better solution? Timer. the u64 parameter can be used to cancel it again
-    Timer(Duration, A, u64),
-    CancelTimer(u64),
+    Timer(Duration, A, AnyHashable),
+    CancelTimer(AnyHashable),
 }
 
 impl<'a, A> Effect<'a, A> {
@@ -78,11 +83,11 @@ impl<'a, A> Effect<'a, A> {
         Self::Multiple(vec![a, b, c, d, e, f])
     }
 
-    pub fn timer(duration: Duration, action: A, identifier: impl Hash) -> Effect<'a, A> {
-        let mut hasher = DefaultHasher::default();
-        identifier.hash(&mut hasher);
-        Effect::Timer(duration, action, hasher.finish())
-    }
+    // pub fn timer(duration: Duration, action: A, identifier: impl Hash) -> Effect<'a, A> {
+    //     let mut hasher = DefaultHasher::default();
+    //     identifier.hash(&mut hasher);
+    //     Effect::Timer(duration, action, hasher.finish())
+    // }
 }
 
 #[derive(Clone)]
@@ -570,10 +575,11 @@ where
                         ));
                         continue;
                     }
-                    Effect::Subscription(receiver) => {
-                        runtime.write_silent().receivers.push(Some(receiver));
-                        // runtime.with_mut(|r| r.receivers.push(Some(receiver)))
-                    }
+                    // Effect::Subscription(receiver) => {
+                    //     runtime.write_silent().receivers.push(Some(receiver));
+                    //     // runtime.with_mut(|r| r.receivers.push(Some(receiver)))
+                    // }
+                    Effect::Subscription(_, _) => {}
                     Effect::Multiple(mut v) => {
                         additions.append(&mut v);
                         continue;
@@ -622,7 +628,7 @@ where
                                     .push(Some(Box::new(TimerEventReceiver::new(receiver))));
 
                                 runtime.timers.insert(
-                                    id,
+                                    id.id(),
                                     tokio::spawn(async move {
                                         loop {
                                             tokio::time::sleep(
@@ -645,7 +651,7 @@ where
                         #[cfg(not(target_arch = "wasm32"))]
                         {
                             let mut runtime = runtime.write_silent();
-                            if let Some(n) = runtime.timers.remove(&id) {
+                            if let Some(n) = runtime.timers.remove(&id.id()) {
                                 n.abort();
                             }
                         }

@@ -1,0 +1,19 @@
+You cannot host two reducers in the same scope. This doesn't work:
+
+```
+#[inline_props]
+fn View(cx: Scope, store: ViewStore) -> Element {
+    render! {
+        div {
+            store.host(...);
+        }
+        div {
+            store.host(...);
+        }
+    }
+}
+```
+
+Instead, within a `fn ...(cx: Scope) { ... }` there can only be
+*one* `host` call. You can split up your `host` calls into minimal
+`fn ViewHost1(cx: ...)`, `fn ViewHost2(cx: ...)`, `fn`s

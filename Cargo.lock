@@ -1804,11 +1804,13 @@ dependencies = [
 name = "navicula_traits"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "dioxus",
  "dioxus-desktop",
  "flume",
  "futures-channel",
  "futures-util",
+ "fxhash",
  "itertools",
  "log",
  "serde_json",
