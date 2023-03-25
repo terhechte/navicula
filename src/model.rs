@@ -1,21 +1,19 @@
 use std::rc::Rc;
 
-use crate::navicula::traits::EnvironmentType;
+use crate::navicula::{publisher::RefPublisher, traits::EnvironmentType};
 
 #[derive(Default)]
 pub struct Environment {
-    chats: Rc<Vec<Chat>>,
+    pub chats: RefPublisher<Vec<Chat>>,
+    pub selected: RefPublisher<Option<Message>>,
 }
 
 impl Environment {
     pub fn new(chats: Vec<Chat>) -> Self {
         Self {
-            chats: Rc::new(chats),
+            chats: RefPublisher::new(chats),
+            selected: RefPublisher::new(None),
         }
-    }
-
-    pub fn chats(&self) -> Rc<Vec<Chat>> {
-        self.chats.clone()
     }
 }
 

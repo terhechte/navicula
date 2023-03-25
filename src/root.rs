@@ -1,13 +1,12 @@
-use std::sync::RwLock;
-
 use dioxus::prelude::*;
 
 use crate::{
     model::Chat,
     navicula::{
         self,
+        effect::Effect,
         traits::{ReducerContext, VviewStore},
-        Effect,
+        types::MessageContext,
     },
 };
 
@@ -44,6 +43,7 @@ pub enum Action {
     Initial,
     Load,
     Reload,
+    CreateChat,
     Selected(u64),
     ClosedMessage,
 }
@@ -79,28 +79,35 @@ impl navicula::traits::Reducer for RootReducer {
     // }
 
     fn reduce<'a, 'b>(
-        context: &'a ReducerContext<'a, Self::Action, Self::Message, Self::DelegateMessage>,
+        context: &'a impl MessageContext<Self::Action, Self::DelegateMessage, Self::Message>,
         action: Self::Action,
         state: &'a mut Self::State,
         environment: &'a Self::Environment,
     ) -> Effect<'b, Action> {
-        match dbg!(action) {
+        match action {
             Action::Initial => {
                 state.counter = 0;
                 return Effect::Action(Action::Load);
             }
+            Action::CreateChat => environment.chats.with_mutation(|mut data| {
+                let new_chat = Chat {
+                    id: (data.len() + 1) as u64,
+                    with: format!("id {}", data.len()),
+                    messages: vec![crate::model::Message::Send("This is a test".to_string())],
+                };
+                data.push(new_chat);
+            }),
             Action::Load => state.counter += 1,
             Action::Selected(item) => {
-                let chats = environment.chats();
-                let chat = chats.iter().find(|s| s.id == item);
-                state.selected = chat.cloned();
+                let chat = environment
+                    .chats
+                    .with(|chats| chats.iter().find(|s| s.id == item).map(|e| e.clone()));
+                state.selected = chat;
             }
             Action::Reload => {
-                println!("handle reload");
                 context.send_children(Message::Reload);
             }
             Action::ClosedMessage => {
-                println!("closed chat");
                 state.selected = None;
             }
         }
@@ -113,44 +120,48 @@ impl navicula::traits::Reducer for RootReducer {
 }
 
 #[inline_props]
-pub fn Root<'a>(cx: Scope<'a>, store: VviewStore<'a, RootReducer>) -> Element<'a> {
+pub fn root<'a>(cx: Scope<'a>, store: VviewStore<'a, RootReducer>) -> Element<'a> {
     println!("re-render root");
     render! {
         div {
             display: "flex",
             flex_direction: "row",
-            Sidebar {
+            self::sidebar {
                 store: store
             }
-            SelectedMessage {
+            store.selected.as_ref().map(|chat| rsx!(self::selected_message {
                 store: store,
-            }
-            // span {
-            //     onclick: move |_| store.send(Action::Reload),
-            //     "Lets talk to our children"
-            // }
+                chat: chat
+            }))
         }
     }
 }
 
 #[inline_props]
-fn Sidebar<'a>(cx: Scope<'a>, store: &'a VviewStore<'a, RootReducer>) -> Element<'a> {
+fn sidebar<'a>(cx: Scope<'a>, store: &'a VviewStore<'a, RootReducer>) -> Element<'a> {
     render! {
-        crate::sidebar::Root {
+        div {
+            button {
+                onclick: move |_| store.send(Action::CreateChat),
+                "New Chat"
+            }
+        }
+        crate::sidebar::root {
             store: store.host(cx, || crate::sidebar::State::new())
         }
     }
 }
 
 #[inline_props]
-fn SelectedMessage<'a>(cx: Scope<'a>, store: &'a VviewStore<'a, RootReducer>) -> Element<'a> {
-    println!("selected id: {:?}", &store.selected);
+fn selected_message<'a>(
+    cx: Scope<'a>,
+    store: &'a VviewStore<'a, RootReducer>,
+    chat: &'a Chat,
+) -> Element<'a> {
     render! {
-        store.selected.as_ref().map(|s| {
-        rsx!(crate::message::Root {
-            key: "{s.id}",
-            store: store.host_with(cx, s.clone(), |s| crate::message::State::new(s)),
-        })
-    })
+        crate::chat::root {
+            key: "{chat.id}",
+            store: store.host_with(cx, (*chat).clone(), |s| crate::chat::State::new(s)),
+        }
     }
 }

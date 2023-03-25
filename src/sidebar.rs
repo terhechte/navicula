@@ -1,10 +1,12 @@
 use std::rc::Rc;
 
 use crate::{
-    model::{Chat, Environment},
+    model::Chat,
     navicula::{
         self,
+        effect::Effect,
         traits::{Reducer, ReducerContext, VviewStore},
+        types::MessageContext,
     },
 };
 use dioxus::prelude::*;
@@ -14,7 +16,7 @@ pub struct ChildReducer {
 }
 
 pub struct State {
-    chats: Rc<Vec<Chat>>,
+    chats: Vec<Chat>,
     counter: usize,
 }
 
@@ -46,6 +48,7 @@ pub enum Action {
     Initial,
     Select(u64),
     Reload,
+    UpdatedChats(Vec<Chat>),
 }
 
 impl navicula::traits::Reducer for ChildReducer {
@@ -60,23 +63,26 @@ impl navicula::traits::Reducer for ChildReducer {
     type Environment = crate::model::Environment;
 
     fn reduce<'a, 'b>(
-        context: &'a ReducerContext<'a, Self::Action, Self::Message, Self::DelegateMessage>,
+        context: &'a impl MessageContext<Self::Action, Self::DelegateMessage, Self::Message>,
         action: Self::Action,
         state: &'a mut Self::State,
         environment: &'a Self::Environment,
-    ) -> navicula::Effect<'b, Self::Action> {
-        dbg!(&action);
+    ) -> Effect<'b, Self::Action> {
         match action {
             Action::Initial => {
-                state.chats = environment.chats();
+                return environment
+                    .chats
+                    .subscribe("chats", context, |data| Action::UpdatedChats(data.clone()));
+            }
+            Action::UpdatedChats(chats) => {
+                state.chats = chats;
             }
             Action::Select(a) => context.send_parent(DelegateMessage::Selected(a)),
             Action::Reload => {
-                println!("reload!");
                 state.counter += 1;
             }
         }
-        navicula::Effect::Nothing
+        Effect::Nothing
     }
 
     fn initial_action() -> Option<Self::Action> {
@@ -108,8 +114,7 @@ impl navicula::traits::ChildReducer<crate::root::RootReducer> for ChildReducer {
 }
 
 #[inline_props]
-pub fn Root<'a>(cx: Scope<'a>, store: VviewStore<'a, ChildReducer>) -> Element<'a> {
-    println!("re-render child");
+pub fn root<'a>(cx: Scope<'a>, store: VviewStore<'a, ChildReducer>) -> Element<'a> {
     render! {
         div {
             display: "flex",

@@ -12,4 +12,4 @@
 - [ ] unregister timers and subscriptions
 - [ ] have a generic subscription type that can be used with all kinds of types
 - [ ] the IntoMessageSender is broken
-- [ ] move the runtime into the viewstore
+- [ ] innerEffect
