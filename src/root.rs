@@ -1,3 +1,5 @@
+use std::sync::RwLock;
+
 use dioxus::prelude::*;
 
 use crate::{
@@ -113,11 +115,6 @@ impl navicula::traits::Reducer for RootReducer {
 #[inline_props]
 pub fn Root<'a>(cx: Scope<'a>, store: VviewStore<'a, RootReducer>) -> Element<'a> {
     println!("re-render root");
-    let item = store.selected.as_ref().map(|s| {
-        rsx!(crate::message::Root {
-            store: store.host(cx, || crate::message::State::new(s.clone())),
-        })
-    });
     render! {
         div {
             display: "flex",
@@ -128,10 +125,10 @@ pub fn Root<'a>(cx: Scope<'a>, store: VviewStore<'a, RootReducer>) -> Element<'a
             SelectedMessage {
                 store: store,
             }
-            span {
-                onclick: move |_| store.send(Action::Reload),
-                "Lets talk to our children"
-            }
+            // span {
+            //     onclick: move |_| store.send(Action::Reload),
+            //     "Lets talk to our children"
+            // }
         }
     }
 }
@@ -147,10 +144,12 @@ fn Sidebar<'a>(cx: Scope<'a>, store: &'a VviewStore<'a, RootReducer>) -> Element
 
 #[inline_props]
 fn SelectedMessage<'a>(cx: Scope<'a>, store: &'a VviewStore<'a, RootReducer>) -> Element<'a> {
+    println!("selected id: {:?}", &store.selected);
     render! {
         store.selected.as_ref().map(|s| {
         rsx!(crate::message::Root {
-            store: store.host(cx, || crate::message::State::new(s.clone())),
+            key: "{s.id}",
+            store: store.host_with(cx, s.clone(), |s| crate::message::State::new(s)),
         })
     })
     }

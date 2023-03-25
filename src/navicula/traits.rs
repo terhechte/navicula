@@ -144,7 +144,60 @@ impl<Action: Clone> ActionSender<Action> {
 }
 
 impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
-    // FIXME: Figure out the reset_state!
+    /// Host with a payload value. If `Value` changes, the state will be reset.
+    /// The `Value` has to be `Clone` because we keep the last value around in order
+    /// to compare it.
+    pub fn host_with<
+        ChildR: ChildReducer<ParentR, Environment = ParentR::Environment>,
+        T,
+        Value: PartialEq + Clone + 'static,
+    >(
+        &'a self,
+        cx: Scope<'a, T>,
+        value: Value,
+        state: impl Fn(Value) -> ChildR::State,
+    ) -> VviewStore<'a, ChildR>
+    where
+        // 'a: 'b,
+        ChildR: 'static,
+        ParentR: 'static,
+    {
+        let (child_sender, child_receiver) = cx.use_hook(|| flume::unbounded());
+
+        // Send the initial action once.
+        cx.use_hook(|| {
+            if let Some(initial_action) = ChildR::initial_action() {
+                child_sender.send(initial_action);
+            }
+        });
+
+        let last = use_ref(cx, || value.clone());
+        let reset_state = {
+            let last_rf = last.read();
+            if last_rf.ne(&value) {
+                true
+            } else {
+                false
+            }
+        };
+
+        let child_state = cx.use_hook(|| unsafe { MaybeUninit::new(state(value.clone())) });
+
+        if reset_state {
+            *last.write_silent() = value.clone();
+            unsafe {
+                *child_state.assume_init_mut() = state(value);
+            }
+            // Send the initial value again
+            if let Some(initial) = ChildR::initial_action() {
+                child_sender.send(initial);
+            }
+        }
+
+        self.host_internal(cx, child_state, child_sender, child_receiver)
+    }
+
+    /// Host with a static state. This state will only change via `Action` messages
     pub fn host<ChildR: ChildReducer<ParentR, Environment = ParentR::Environment>, T>(
         &'a self,
         cx: Scope<'a, T>,
@@ -155,19 +208,40 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         ChildR: 'static,
         ParentR: 'static,
     {
-        let environment = self.environment;
-        let child_state = cx.use_hook(|| unsafe {
-            //Cell::new(Some(ChildR::initial_state(&environment)))
-            MaybeUninit::new(state())
+        let child_state = cx.use_hook(|| unsafe { MaybeUninit::new(state()) });
+
+        let (child_sender, child_receiver) = cx.use_hook(|| flume::unbounded());
+
+        // Send the initial action once.
+        cx.use_hook(|| {
+            if let Some(initial_action) = ChildR::initial_action() {
+                child_sender.send(initial_action);
+            }
         });
+
+        self.host_internal(cx, child_state, child_sender, child_receiver)
+    }
+
+    // FIXME: Figure out the reset_state!
+    fn host_internal<ChildR: ChildReducer<ParentR, Environment = ParentR::Environment>, T>(
+        &'a self,
+        cx: Scope<'a, T>,
+        child_state: &'a mut MaybeUninit<<ChildR as Reducer>::State>,
+        child_sender: &'a mut flume::Sender<<ChildR as Reducer>::Action>,
+        child_receiver: &'a mut flume::Receiver<<ChildR as Reducer>::Action>,
+    ) -> VviewStore<'a, ChildR>
+    where
+        // 'a: 'b,
+        ChildR: 'static,
+        ParentR: 'static,
+    {
+        let environment = self.environment;
 
         // FIXME: reset_state
         // let reset_state = false;
         // if reset_state {
         //     *child_state.write_silent() = state();
         // }
-
-        let (child_sender, child_receiver) = cx.use_hook(|| flume::unbounded());
 
         let scope_id = cx.scope_id().0;
         let mut parent_runtime = self.runtime.write_silent();
@@ -384,13 +458,14 @@ fn rrun<'a, T, R: Reducer + 'static>(
             .collect();
     }
 
-    let mut known_actions = cx.use_hook(|| {
-        if let Some(initial_action) = R::initial_action() {
-            vec![initial_action]
-        } else {
-            Vec::new()
-        }
-    });
+    // let mut known_actions = cx.use_hook(|| {
+    //     if let Some(initial_action) = R::initial_action() {
+    //         vec![initial_action]
+    //     } else {
+    //         Vec::new()
+    //     }
+    // });
+    let mut known_actions = Vec::new();
 
     // Get the initial action
 

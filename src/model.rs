@@ -23,14 +23,22 @@ impl EnvironmentType for Environment {
     type AppEvent = AppEvent;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Chat {
     pub id: u64,
     pub with: String,
     pub messages: Vec<Message>,
 }
 
-#[derive(Clone)]
+impl PartialEq for Chat {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Chat {}
+
+#[derive(Clone, Debug)]
 pub enum Message {
     Send(String),
     Received(String),
@@ -68,7 +76,7 @@ pub mod mock {
             },
             Chat {
                 id: 3,
-                with: "Hans".to_string(),
+                with: "Carl".to_string(),
                 messages: vec![Message::Received("Hey!".to_string())],
             },
         ]

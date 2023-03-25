@@ -98,9 +98,16 @@ impl navicula::traits::ChildReducer<crate::root::RootReducer> for ChildReducer {
 pub fn Root<'a>(cx: Scope<'a>, store: VviewStore<'a, ChildReducer>) -> Element<'a> {
     println!("re-render child");
     render! {
-        for message in store.chat.messages.iter() {
-            Message {
-                message: &message
+        div {
+            display: "flex",
+            flex_direction: "column",
+            span {
+                onclick: move |_| store.send(Action::Close),
+            }
+            for message in store.chat.messages.iter() {
+                Message {
+                    message: &message
+                }
             }
         }
     }

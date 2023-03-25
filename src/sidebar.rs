@@ -111,10 +111,15 @@ impl navicula::traits::ChildReducer<crate::root::RootReducer> for ChildReducer {
 pub fn Root<'a>(cx: Scope<'a>, store: VviewStore<'a, ChildReducer>) -> Element<'a> {
     println!("re-render child");
     render! {
-        "Child! {store.counter}",
-        span {
-            onclick: move |_| store.send(Action::Select(1)),
-            "Select"
+        div {
+            display: "flex",
+            flex_direction: "column",
+            for chat in store.chats.iter() {
+                div {
+                    onclick: move |_| store.send(Action::Select(chat.id)),
+                    "{chat.with}"
+                }
+            }
         }
     }
 }
