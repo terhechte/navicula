@@ -51,6 +51,17 @@ pub enum Action {
     UpdatedChats(Vec<Chat>),
 }
 
+impl std::fmt::Display for Action {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Action::Initial => f.write_str("Initial"),
+            Action::Select(_) => f.write_str("Select"),
+            Action::Reload => f.write_str("Reload"),
+            Action::UpdatedChats(_) => f.write_str("UpdatedChats"),
+        }
+    }
+}
+
 impl navicula::traits::Reducer for ChildReducer {
     type Message = Message;
 
@@ -68,6 +79,7 @@ impl navicula::traits::Reducer for ChildReducer {
         state: &'a mut Self::State,
         environment: &'a Self::Environment,
     ) -> Effect<'b, Self::Action> {
+        log::info!("sidebar action: {action}");
         match action {
             Action::Initial => {
                 return environment

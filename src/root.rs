@@ -121,7 +121,7 @@ impl navicula::traits::Reducer for RootReducer {
 
 #[inline_props]
 pub fn root<'a>(cx: Scope<'a>, store: VviewStore<'a, RootReducer>) -> Element<'a> {
-    println!("re-render root");
+    println!("root {:?}", cx.scope_id());
     render! {
         div {
             display: "flex",
@@ -139,6 +139,7 @@ pub fn root<'a>(cx: Scope<'a>, store: VviewStore<'a, RootReducer>) -> Element<'a
 
 #[inline_props]
 fn sidebar<'a>(cx: Scope<'a>, store: &'a VviewStore<'a, RootReducer>) -> Element<'a> {
+    println!("sidebar {:?}", cx.scope_id());
     render! {
         div {
             button {
@@ -158,10 +159,20 @@ fn selected_message<'a>(
     store: &'a VviewStore<'a, RootReducer>,
     chat: &'a Chat,
 ) -> Element<'a> {
+    cx.use_hook(|| Drops(cx.scope_id().0));
+    println!("selected_message {:?}", cx.scope_id());
     render! {
         crate::chat::root {
             key: "{chat.id}",
             store: store.host_with(cx, (*chat).clone(), |s| crate::chat::State::new(s)),
         }
+    }
+}
+
+struct Drops(usize);
+
+impl Drop for Drops {
+    fn drop(&mut self) {
+        println!("Dropped Selected Message!: {}", self.0);
     }
 }

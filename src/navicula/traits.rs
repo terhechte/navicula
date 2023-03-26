@@ -5,11 +5,36 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::mem::MaybeUninit;
 use std::ops::Deref;
+use std::sync::RwLock;
 use std::{rc::Rc, sync::Arc};
 
 use super::publisher::{AnySubscription, Subscription};
 use super::types::{MessageContext, UpdaterContext};
 use super::{effect::Effect, types::AppWindow};
+
+struct Drops(Box<dyn Fn()>);
+
+impl Drops {
+    fn register<'a, T>(cx: Scope<'a, T>, msg: &'static str) {
+        let id = cx.scope_id().0;
+        cx.use_hook(move || {
+            Drops(Box::new(move || {
+                println!("Dropped: {} {}", id, msg);
+            }))
+        });
+    }
+
+    fn action<'a, T>(cx: Scope<'a, T>, a: impl Fn() + 'static) {
+        let boxed = Box::new(move || a());
+        cx.use_hook(move || Drops(boxed));
+    }
+}
+
+impl Drop for Drops {
+    fn drop(&mut self) {
+        (self.0)()
+    }
+}
 
 pub trait Reducer {
     /// A reducer can be messaged from a parent.
@@ -109,9 +134,9 @@ struct Rruntime<R: Reducer> {
     /// that a new `Action` was generated
     // external_messages: Vec<Arc<dyn Fn(R::Message) + Send + Sync>>,
     // FIXME: Drop Action?
-    child_senders: fxhash::FxHashMap<usize, Rc<dyn Fn(R::Message)>>,
+    child_senders: RwLock<fxhash::FxHashMap<usize, Rc<dyn Fn(R::Message)>>>,
     /// When a child drops, it uses this to notify the parent (with the scope id)
-    notify_drop: Option<Box<dyn Fn(usize)>>,
+    // notify_drop: Option<Box<dyn Fn(usize)>>,
     /// Current subscriptions so they can be cleared on drop
     subscriptions: Vec<AnySubscription>,
 }
@@ -127,26 +152,26 @@ impl<R: Reducer> Rruntime<R> {
             sender,
             // external_messages,
             child_senders: Default::default(),
-            notify_drop: None,
+            // notify_drop: None,
             subscriptions: Default::default(),
         }
     }
 }
 
-impl<R: Reducer> Drop for Rruntime<R> {
-    fn drop(&mut self) {
-        if let Some(ref notifier) = self.notify_drop {
-            log::trace!("Dropping {self:?}");
-            notifier(self.scope_id)
-        }
-    }
-}
+// impl<R: Reducer> Drop for Rruntime<R> {
+//     fn drop(&mut self) {
+//         println!("drop drop {}", self.scope_id);
+//         if let Some(ref notifier) = self.notify_drop {
+//             log::trace!("Dropping {self:?}");
+//             notifier(self.scope_id)
+//         }
+//     }
+// }
 
 impl<R: Reducer> std::fmt::Debug for Rruntime<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Rruntime")
             .field("scope_id", &self.scope_id)
-            .field("child_senders", &self.child_senders.len())
             .field("subscriptions", &self.subscriptions.len())
             .finish()
     }
@@ -186,6 +211,7 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         ChildR: 'static,
         ParentR: 'static,
     {
+        Drops::register(cx, "host_with");
         let (child_sender, child_receiver) = cx.use_hook(|| flume::unbounded());
 
         // Send the initial action once.
@@ -236,6 +262,7 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         ChildR: 'static,
         ParentR: 'static,
     {
+        Drops::register(cx, "host");
         let child_state = cx.use_hook(|| MaybeUninit::new(state()));
 
         let (child_sender, child_receiver) = cx.use_hook(|| flume::unbounded());
@@ -266,6 +293,8 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         ChildR: 'static,
         ParentR: 'static,
     {
+        println!("host internal {:?}", cx.scope_id());
+        Drops::register(cx, "host_internal");
         let environment = self.environment;
 
         // FIXME: reset_state
@@ -275,7 +304,7 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         // }
 
         let scope_id = cx.scope_id().0;
-        let mut parent_runtime = self.runtime.write_silent();
+        let parent_runtime = self.runtime.read();
         let parent_sender = parent_runtime.sender.clone();
 
         // Allow the child to send `DelegateMessage` messages
@@ -304,11 +333,12 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
                 }
                 updater();
             });
-            if parent_runtime.child_senders.contains_key(&scope_id) {
+            let mut s = parent_runtime.child_senders.write().unwrap();
+            if s.contains_key(&scope_id) {
                 println!("ERROR: Hosted two child reducers in the same scope");
                 println!("{}", include_str!("error_message.txt"));
             }
-            parent_runtime.child_senders.insert(scope_id, sender);
+            s.insert(scope_id, sender);
         });
 
         let updater = cx.schedule_update();
@@ -321,6 +351,8 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
                 updater()
             })
         });
+
+        std::mem::forget(parent_runtime);
 
         let mut context: ReducerContext<
             'a,
@@ -352,21 +384,24 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
 
         // Register a drop handler to remove the child senders
         // and subscriptions
-        cx.use_hook(|| {
-            let parent_runtime = self.runtime.clone();
-            let child_runtime = view_store.runtime.clone();
-            let notify_drop = Box::new(move |id: usize| {
-                let mut rt = parent_runtime.write_silent();
-                rt.child_senders.remove(&id);
+        Drops::register(cx, "host_internal pre-drop");
+        let xparent_runtime = self.runtime.clone();
+        let xchild_runtime = view_store.runtime.clone();
+        Drops::action(cx, move || {
+            log::info!("Inner Drop {scope_id}");
+            let rx = xparent_runtime.read();
+            let mut s = rx.child_senders.write().unwrap();
+            s.remove(&scope_id);
 
-                // remove the child subscriptions
-                let ct = child_runtime.write_silent();
-                for sub in ct.subscriptions.iter() {
-                    sub.cancel();
-                }
-            });
-            view_store.runtime.write_silent().notify_drop = Some(notify_drop);
+            // remove the child subscriptions
+            let ct = xchild_runtime.write_silent();
+            for sub in ct.subscriptions.iter() {
+                log::info!("Inner Drop Subscription {scope_id}");
+                sub.cancel();
+            }
         });
+
+        // let rrr = view_store.runtime.clone();
 
         // this is not optimal. if reset state is on, we also need to
         // get rid of the old subscriptions. this should kinda work via
@@ -374,6 +409,10 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         // so, at least get rid of the subscriptions here. other things
         // (like actions which are already queued) as well
         if reset {
+            log::info!("reset");
+            let rx = self.runtime.read();
+            let mut s = rx.child_senders.write().unwrap();
+            s.remove(&scope_id);
             let ct = view_store.runtime.write_silent();
             for sub in ct.subscriptions.iter() {
                 sub.cancel();
@@ -537,6 +576,7 @@ fn rrun<'a, T, R: Reducer + 'static>(
         None
     });
 
+    println!("create runtime for {}", cx.scope_id().0);
     let runtime: &UseRef<Rruntime<R>> = use_ref(cx, || {
         Rruntime::new(
             scope_id,
@@ -551,7 +591,8 @@ fn rrun<'a, T, R: Reducer + 'static>(
     // but once this code is called, they exist. so we can clone thme into the
     // parent so that they can be executed
     {
-        let current_child_senders = &runtime.read().child_senders;
+        let rx = runtime.read();
+        let current_child_senders = rx.child_senders.write().unwrap();
         if !current_child_senders.is_empty() {
             // Need to be wrapped so they convert from Message to Action
             context.child_messages = current_child_senders
