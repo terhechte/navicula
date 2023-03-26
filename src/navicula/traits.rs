@@ -224,14 +224,7 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         });
 
         let last = use_ref(cx, || value.clone());
-        let reset_state = {
-            let last_rf = last.read();
-            if last_rf.ne(&value) {
-                true
-            } else {
-                false
-            }
-        };
+        let reset_state = last.with(|last_rf| if last_rf.ne(&value) { true } else { false });
 
         let child_state = cx.use_hook(|| MaybeUninit::new(state(value.clone())));
 
@@ -304,8 +297,8 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         // }
 
         let scope_id = cx.scope_id().0;
-        let parent_runtime = self.runtime.read();
-        let parent_sender = parent_runtime.sender.clone();
+        // let parent_runtime = self.runtime.read();
+        let parent_sender = self.runtime.read().sender.clone();
 
         // Allow the child to send `DelegateMessage` messages
         // to the parent
@@ -323,22 +316,24 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         let updater = cx.schedule_update();
         let cloned_child_sender = child_sender.clone();
         cx.use_hook(|| {
-            let sender = Rc::new(move |action| {
-                let Some(child_message) = ChildR::to_child(action) else {
-                    log::error!("failed to convert action for child");
-                    return
-                };
-                if let Err(e) = cloned_child_sender.send(child_message) {
-                    log::error!("Could not send action to parent {e:?}");
+            self.runtime.with(|parent_runtime| {
+                let sender = Rc::new(move |action| {
+                    let Some(child_message) = ChildR::to_child(action) else {
+                        log::error!("failed to convert action for child");
+                        return
+                    };
+                    if let Err(e) = cloned_child_sender.send(child_message) {
+                        log::error!("Could not send action to parent {e:?}");
+                    }
+                    updater();
+                });
+                let mut s = parent_runtime.child_senders.write().unwrap();
+                if s.contains_key(&scope_id) {
+                    println!("ERROR: Hosted two child reducers in the same scope");
+                    println!("{}", include_str!("error_message.txt"));
                 }
-                updater();
+                s.insert(scope_id, sender);
             });
-            let mut s = parent_runtime.child_senders.write().unwrap();
-            if s.contains_key(&scope_id) {
-                println!("ERROR: Hosted two child reducers in the same scope");
-                println!("{}", include_str!("error_message.txt"));
-            }
-            s.insert(scope_id, sender);
         });
 
         let updater = cx.schedule_update();
@@ -352,7 +347,7 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
             })
         });
 
-        std::mem::forget(parent_runtime);
+        // std::mem::forget(parent_runtime);
 
         let mut context: ReducerContext<
             'a,
@@ -389,16 +384,18 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         let xchild_runtime = view_store.runtime.clone();
         Drops::action(cx, move || {
             log::info!("Inner Drop {scope_id}");
-            let rx = xparent_runtime.read();
-            let mut s = rx.child_senders.write().unwrap();
-            s.remove(&scope_id);
+            xparent_runtime.with(|rx| {
+                let mut s = rx.child_senders.write().unwrap();
+                s.remove(&scope_id);
+            });
 
             // remove the child subscriptions
-            let ct = xchild_runtime.write_silent();
+            let mut ct = xchild_runtime.write_silent();
             for sub in ct.subscriptions.iter() {
                 log::info!("Inner Drop Subscription {scope_id}");
                 sub.cancel();
             }
+            ct.subscriptions.clear();
         });
 
         // let rrr = view_store.runtime.clone();
@@ -409,14 +406,15 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         // so, at least get rid of the subscriptions here. other things
         // (like actions which are already queued) as well
         if reset {
-            log::info!("reset");
+            log::info!("RESET SUBS");
             let rx = self.runtime.read();
             let mut s = rx.child_senders.write().unwrap();
             s.remove(&scope_id);
-            let ct = view_store.runtime.write_silent();
+            let mut ct = view_store.runtime.write_silent();
             for sub in ct.subscriptions.iter() {
                 sub.cancel();
             }
+            ct.subscriptions.clear();
             // FIXME: More?
         }
 
@@ -591,16 +589,17 @@ fn rrun<'a, T, R: Reducer + 'static>(
     // but once this code is called, they exist. so we can clone thme into the
     // parent so that they can be executed
     {
-        let rx = runtime.read();
-        let current_child_senders = rx.child_senders.write().unwrap();
-        if !current_child_senders.is_empty() {
-            // Need to be wrapped so they convert from Message to Action
-            context.child_messages = current_child_senders
-                .values()
-                .cloned()
-                // .map(|e| Rc::new(move |message| e(message.into_action())))
-                .collect();
-        }
+        runtime.with(|rx| {
+            let current_child_senders = rx.child_senders.write().unwrap();
+            if !current_child_senders.is_empty() {
+                // Need to be wrapped so they convert from Message to Action
+                context.child_messages = current_child_senders
+                    .values()
+                    .cloned()
+                    // .map(|e| Rc::new(move |message| e(message.into_action())))
+                    .collect();
+            }
+        });
     }
     // let mut known_actions = cx.use_hook(|| {
     //     if let Some(initial_action) = R::initial_action() {
