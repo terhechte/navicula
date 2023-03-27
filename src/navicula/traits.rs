@@ -798,18 +798,14 @@ impl AnyHashable {
     }
 }
 
-pub trait IntoAnyHashable {
-    fn into_anyhashable(&self) -> AnyHashable;
-}
-
-impl<'a> IntoAnyHashable for &str {
-    fn into_anyhashable(&self) -> AnyHashable {
-        AnyHashable(self.hashed())
+impl<'a> From<&str> for AnyHashable {
+    fn from(value: &str) -> Self {
+        AnyHashable(value.hashed())
     }
 }
 
-impl<'a> IntoAnyHashable for usize {
-    fn into_anyhashable(&self) -> AnyHashable {
-        AnyHashable(self.hashed())
+impl<'a> From<usize> for AnyHashable {
+    fn from(value: usize) -> Self {
+        AnyHashable(value.hashed())
     }
 }

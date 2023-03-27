@@ -4,7 +4,7 @@ use futures_util::{future::BoxFuture, Future};
 
 use super::{
     publisher::{AnySubscription, Publisher, RefSubscription},
-    traits::{AnyHashable, IntoAnyHashable},
+    traits::AnyHashable,
 };
 
 // FIXME: Wrap with InnerEffect so only methods expose effects

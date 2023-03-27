@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock};
 use fxhash::FxHashMap;
 
 use super::effect::Effect;
-use super::traits::IntoAnyHashable;
+use super::traits::AnyHashable;
 use super::types::UpdaterContext;
 
 pub trait Publisher {
@@ -102,7 +102,7 @@ impl<Data: 'static> RefPublisher<Data> {
 
     pub fn subscribe<'x, A: Clone + Send + Sync + 'static, F>(
         &self,
-        id: impl IntoAnyHashable,
+        id: impl Into<AnyHashable>,
         context: &impl UpdaterContext<A>,
         action: F,
     ) -> Effect<'x, A>
@@ -123,7 +123,7 @@ impl<Data: 'static> RefPublisher<Data> {
         // first call
         boxed_updater(self.data.clone());
 
-        let id = id.into_anyhashable().id();
+        let id = id.into().id();
         {
             let mut subscribers = self.subscribers.write().unwrap();
             subscribers.insert(id, boxed_updater);
@@ -137,8 +137,8 @@ impl<Data: 'static> RefPublisher<Data> {
         )
     }
 
-    pub fn unsubscribe(&self, id: impl IntoAnyHashable) {
-        let id = id.into_anyhashable().id();
+    pub fn unsubscribe(&self, id: impl Into<AnyHashable>) {
+        let id = id.into().id();
         let Ok(mut subscribers) = self.subscribers.write() else {
             log::error!("Could not unsubscribe");
             return
