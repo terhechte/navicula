@@ -102,7 +102,7 @@ pub trait IntoMessageSender<Message> {
     ) -> Arc<dyn Fn(Message) + Send + Sync>;
 }
 
-pub struct VviewStore<'a, R: Reducer> {
+pub struct VviewStore<'a, R: Reducer + 'static> {
     // actions: &'a mut R::Action,
     //updater: Box<dyn Fn()>,
     // sender: ActionSender<R::Action>,
@@ -111,12 +111,18 @@ pub struct VviewStore<'a, R: Reducer> {
     environment: &'a R::Environment,
     /// This state is kept separate so that it can be
     /// kept in a `UseRef` and is only created once
-    runtime: &'a UseRef<Rruntime<R>>,
+    runtime: &'a UseState<Rruntime<R>>,
 }
 
 impl<'a, R: Reducer> VviewStore<'a, R> {
     pub fn send(&self, action: R::Action) {
-        self.runtime.read().sender.send(action);
+        //self.runtime.read().sender.send(action);
+        self.runtime.get().sender.send(action);
+    }
+
+    pub fn sender(&self) -> ActionSender<R::Action> {
+        //self.runtime.read().sender.clone()
+        self.runtime.get().sender.clone()
     }
 }
 
@@ -141,7 +147,7 @@ struct Rruntime<R: Reducer> {
     /// When a child drops, it uses this to notify the parent (with the scope id)
     // notify_drop: Option<Box<dyn Fn(usize)>>,
     /// Current subscriptions so they can be cleared on drop
-    subscriptions: Vec<AnySubscription>,
+    subscriptions: RwLock<Vec<AnySubscription>>,
 }
 
 impl<R: Reducer> Rruntime<R> {
@@ -175,7 +181,7 @@ impl<R: Reducer> std::fmt::Debug for Rruntime<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Rruntime")
             .field("scope_id", &self.scope_id)
-            .field("subscriptions", &self.subscriptions.len())
+            .field("subscriptions", &self.subscriptions.read().unwrap().len())
             .finish()
     }
 }
@@ -301,7 +307,7 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
 
         let scope_id = cx.scope_id().0;
         // let parent_runtime = self.runtime.read();
-        let parent_sender = self.runtime.read().sender.clone();
+        let parent_sender = self.runtime.get().sender.clone();
 
         // Allow the child to send `DelegateMessage` messages
         // to the parent
@@ -319,24 +325,24 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         let updater = cx.schedule_update();
         let cloned_child_sender = child_sender.clone();
         cx.use_hook(|| {
-            self.runtime.with(|parent_runtime| {
-                let sender = Rc::new(move |action| {
-                    let Some(child_message) = ChildR::to_child(action) else {
-                        log::error!("failed to convert action for child");
-                        return
-                    };
-                    if let Err(e) = cloned_child_sender.send(child_message) {
-                        log::error!("Could not send action to parent {e:?}");
-                    }
-                    updater();
-                });
-                let mut s = parent_runtime.child_senders.write().unwrap();
-                if s.contains_key(&scope_id) {
-                    println!("ERROR: Hosted two child reducers in the same scope");
-                    println!("{}", include_str!("error_message.txt"));
+            // self.runtime.with(|parent_runtime| {
+            let sender = Rc::new(move |action| {
+                let Some(child_message) = ChildR::to_child(action) else {
+                    log::error!("failed to convert action for child");
+                    return
+                };
+                if let Err(e) = cloned_child_sender.send(child_message) {
+                    log::error!("Could not send action to parent {e:?}");
                 }
-                s.insert(scope_id, sender);
+                updater();
             });
+            let mut s = self.runtime.child_senders.write().unwrap();
+            if s.contains_key(&scope_id) {
+                println!("ERROR: Hosted two child reducers in the same scope");
+                println!("{}", include_str!("error_message.txt"));
+            }
+            s.insert(scope_id, sender);
+            // });
         });
 
         let updater = cx.schedule_update();
@@ -370,15 +376,7 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         // rrun(cx, context, child_state, external_events, reducer)
 
         // let child_view_store = run(context, reducer_state, environment_builder, initial_action, external_events, reducer)
-        let view_store = rrun(
-            cx,
-            &mut context,
-            child_state,
-            environment,
-            child_sender,
-            None,
-            // reducer,
-        );
+        let view_store = rrun(cx, &mut context, child_state, environment, child_sender);
 
         // Register a drop handler to remove the child senders
         // and subscriptions
@@ -387,18 +385,17 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         let xchild_runtime = view_store.runtime.clone();
         Drops::action(cx, move || {
             log::info!("Inner Drop {scope_id}");
-            xparent_runtime.with(|rx| {
-                let mut s = rx.child_senders.write().unwrap();
-                s.remove(&scope_id);
-            });
+
+            let mut s = xparent_runtime.child_senders.write().unwrap();
+            s.remove(&scope_id);
 
             // remove the child subscriptions
-            let mut ct = xchild_runtime.write_silent();
-            for sub in ct.subscriptions.iter() {
+            let mut ct = xchild_runtime.subscriptions.write().unwrap();
+            for sub in ct.iter() {
                 log::info!("Inner Drop Subscription {scope_id}");
                 sub.cancel();
             }
-            ct.subscriptions.clear();
+            ct.clear();
         });
 
         // let rrr = view_store.runtime.clone();
@@ -409,15 +406,13 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         // so, at least get rid of the subscriptions here. other things
         // (like actions which are already queued) as well
         if reset {
-            log::info!("RESET SUBS");
-            let rx = self.runtime.read();
-            let mut s = rx.child_senders.write().unwrap();
+            let mut s = self.runtime.child_senders.write().unwrap();
             s.remove(&scope_id);
-            let mut ct = view_store.runtime.write_silent();
-            for sub in ct.subscriptions.iter() {
+            let mut ct = view_store.runtime.subscriptions.write().unwrap();
+            for sub in ct.iter() {
                 sub.cancel();
             }
-            ct.subscriptions.clear();
+            ct.clear();
             // FIXME: More?
         }
 
@@ -467,15 +462,7 @@ where
             updater: updater.clone(),
         };
 
-    let view_store = rrun(
-        cx,
-        &mut context,
-        state,
-        environment,
-        child_sender,
-        None,
-        // reducer,
-    );
+    let view_store = rrun(cx, &mut context, state, environment, child_sender);
 
     view_store
 }
@@ -532,8 +519,6 @@ fn rrun<'a, T, R: Reducer + 'static>(
     state: &'a mut MaybeUninit<R::State>,
     environment: &'a R::Environment,
     action_sender: &'a mut flume::Sender<R::Action>,
-    external_events: Option<Vec<Box<dyn IntoMessageSender<R::Message>>>>,
-    // reducer: R,
 ) -> VviewStore<'a, R>
 // where
 //     R: 'static,
@@ -556,29 +541,7 @@ fn rrun<'a, T, R: Reducer + 'static>(
     //     (receiver, sender)
     // });
 
-    let external_receiver: &mut Option<Vec<flume::Receiver<R::Action>>> = cx.use_hook(|| {
-        // if let Some(senders) = external_events {
-        //     let (external_sender, external_receiver) = flume::unbounded::<R::Action>();
-        //     let cloned_updater = updater.clone();
-        //     let wrapped_sender = Arc::new(move |message: R::Message| {
-        //         // FIXME: Change
-        //         // external_sender.send(message.into_action());
-        //         cloned_updater();
-        //     });
-
-        //     let mut output = Vec::with_capacity(senders.len() + 1);
-        //     for sender in senders {
-        //         output.push(sender.into_sender(wrapped_sender.clone()))
-        //     }
-        //     Some(external_receiver)
-        // } else {
-        //     None
-        // }
-        None
-    });
-
-    println!("create runtime for {}", cx.scope_id().0);
-    let runtime: &UseRef<Rruntime<R>> = use_ref(cx, || {
+    let runtime: &UseState<Rruntime<R>> = use_state(cx, || {
         Rruntime::new(
             scope_id,
             ActionSender {
@@ -592,17 +555,15 @@ fn rrun<'a, T, R: Reducer + 'static>(
     // but once this code is called, they exist. so we can clone thme into the
     // parent so that they can be executed
     {
-        runtime.with(|rx| {
-            let current_child_senders = rx.child_senders.write().unwrap();
-            if !current_child_senders.is_empty() {
-                // Need to be wrapped so they convert from Message to Action
-                context.child_messages = current_child_senders
-                    .values()
-                    .cloned()
-                    // .map(|e| Rc::new(move |message| e(message.into_action())))
-                    .collect();
-            }
-        });
+        let current_child_senders = runtime.child_senders.read().unwrap();
+        if !current_child_senders.is_empty() {
+            // Need to be wrapped so they convert from Message to Action
+            context.child_messages = current_child_senders
+                .values()
+                .cloned()
+                // .map(|e| Rc::new(move |message| e(message.into_action())))
+                .collect();
+        }
     }
     // let mut known_actions = cx.use_hook(|| {
     //     if let Some(initial_action) = R::initial_action() {
@@ -697,8 +658,7 @@ fn rrun<'a, T, R: Reducer + 'static>(
                         continue;
                     }
                     InnerEffect::Subscription(h) => {
-                        let mut r = runtime.write_silent();
-                        r.subscriptions.push(h);
+                        let _ = runtime.get().subscriptions.write().map(|mut e| e.push(h));
                     }
                     InnerEffect::Multiple(mut v) => {
                         additions.append(&mut v);
