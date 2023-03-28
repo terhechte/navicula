@@ -128,7 +128,7 @@ impl<Data: 'static> RefPublisher<Data> {
             let mut subscribers = self.subscribers.write().unwrap();
             subscribers.insert(id, boxed_updater);
         }
-        Effect::Subscription(
+        Effect::subscription(
             RefSubscription {
                 id,
                 subscribers: self.subscribers.clone(),

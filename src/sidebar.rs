@@ -94,7 +94,7 @@ impl navicula::traits::Reducer for ChildReducer {
                 state.counter += 1;
             }
         }
-        Effect::Nothing
+        Effect::NONE
     }
 
     fn initial_action() -> Option<Self::Action> {

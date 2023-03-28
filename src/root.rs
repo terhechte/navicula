@@ -87,7 +87,7 @@ impl navicula::traits::Reducer for RootReducer {
         match action {
             Action::Initial => {
                 state.counter = 0;
-                return Effect::Action(Action::Load);
+                return Effect::action(Action::Load);
             }
             Action::CreateChat => environment.chats.with_mutation(|mut data| {
                 let new_chat = Chat {
@@ -111,7 +111,7 @@ impl navicula::traits::Reducer for RootReducer {
                 state.selected = None;
             }
         }
-        Effect::Nothing
+        Effect::NONE
     }
 
     fn initial_action() -> Option<Self::Action> {

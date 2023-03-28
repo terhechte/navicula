@@ -10,7 +10,10 @@ use std::{rc::Rc, sync::Arc};
 
 use super::publisher::{AnySubscription, Subscription};
 use super::types::{MessageContext, UpdaterContext};
-use super::{effect::Effect, types::AppWindow};
+use super::{
+    effect::{Effect, InnerEffect},
+    types::AppWindow,
+};
 
 struct Drops(Box<dyn Fn()>);
 
@@ -652,7 +655,7 @@ fn rrun<'a, T, R: Reducer + 'static>(
     let eval = dioxus_desktop::use_eval(&cx);
 
     // Convert actions into effects and then handle in a loop
-    let mut effects: Vec<_> = known_actions.drain(0..).map(Effect::Action).collect();
+    let mut effects: Vec<_> = known_actions.drain(0..).map(InnerEffect::Action).collect();
 
     if !effects.is_empty() {
         // let mut current_runtime = runtime.write_silent();
@@ -660,34 +663,38 @@ fn rrun<'a, T, R: Reducer + 'static>(
         let mut current_state = unsafe { state.assume_init_mut() };
 
         loop {
-            let mut additions: Vec<Effect<'_, R::Action>> = Vec::with_capacity(2);
+            let mut additions: Vec<InnerEffect<'_, R::Action>> = Vec::with_capacity(2);
             for effect in effects.drain(0..) {
                 match effect {
-                    Effect::Future(fut) => {
+                    InnerEffect::Future(fut) => {
                         coroutine.send(fut);
                     }
-                    Effect::Action(action) => {
+                    InnerEffect::Delay(d, a) => {
+                        // FIXME: Implement
+                        panic!()
+                    }
+                    InnerEffect::Action(action) => {
                         let next =
                             R::reduce(&*context, action, &mut current_state, environment.deref());
-                        additions.push(next);
+                        additions.push(next.inner());
                         continue;
                     }
-                    Effect::Subscription(h) => {
+                    InnerEffect::Subscription(h) => {
                         let mut r = runtime.write_silent();
                         r.subscriptions.push(h);
                     }
-                    Effect::Multiple(mut v) => {
+                    InnerEffect::Multiple(mut v) => {
                         additions.append(&mut v);
                         continue;
                     }
-                    Effect::Nothing => (),
-                    Effect::Ui(s) => {
+                    InnerEffect::Nothing => (),
+                    InnerEffect::Ui(s) => {
                         let eval = eval.clone();
                         cx.push_future(async move {
                             eval(s);
                         });
                     }
-                    Effect::UiFuture(fut) => {
+                    InnerEffect::UiFuture(fut) => {
                         let cloned_sender = sender.clone();
                         cx.push_future(async move {
                             if let Some(n) = fut.await {
@@ -695,7 +702,7 @@ fn rrun<'a, T, R: Reducer + 'static>(
                             }
                         });
                     }
-                    Effect::Timer(duration, action, id) => {
+                    InnerEffect::Timer(duration, action, id) => {
                         #[cfg(not(target_arch = "wasm32"))]
                         {
                             // let update_fn = context.cx().schedule_update();
@@ -730,7 +737,7 @@ fn rrun<'a, T, R: Reducer + 'static>(
                             };
                         }
                     }
-                    Effect::CancelTimer(id) => {
+                    InnerEffect::CancelTimer(id) => {
                         if let Some(n) = context.timers.remove(&id) {
                             n.abort();
                         }

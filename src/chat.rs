@@ -85,7 +85,7 @@ impl navicula::traits::Reducer for ChildReducer {
                 context.send_parent(DelegateMessage::Closed);
             }
         }
-        Effect::Nothing
+        Effect::NONE
     }
 
     fn initial_action() -> Option<Self::Action> {
@@ -209,7 +209,7 @@ mod edit {
                 }
                 EditAction::Done => context.send_parent(DelegateMessage::Done),
             }
-            Effect::Nothing
+            Effect::NONE
         }
 
         fn initial_action() -> Option<Self::Action> {
