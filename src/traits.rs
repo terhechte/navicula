@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use futures_util::{future::BoxFuture, StreamExt};
-use fxhash::{FxHashMap, FxHashSet};
+use fxhash::FxHashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::mem::MaybeUninit;

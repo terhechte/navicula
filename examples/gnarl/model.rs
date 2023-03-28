@@ -1,6 +1,4 @@
-use std::rc::Rc;
-
-use crate::navicula::{publisher::RefPublisher, traits::EnvironmentType};
+use navicula::{publisher::RefPublisher, traits::EnvironmentType};
 
 #[derive(Default)]
 pub struct Environment {

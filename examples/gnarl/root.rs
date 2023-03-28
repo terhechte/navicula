@@ -1,37 +1,14 @@
 use dioxus::prelude::*;
+use navicula::{self, effect::Effect, traits::VviewStore, types::MessageContext};
 
-use crate::{
-    model::Chat,
-    navicula::{
-        self,
-        effect::Effect,
-        traits::{ReducerContext, VviewStore},
-        types::MessageContext,
-    },
-};
+use crate::model::Chat;
 
-pub struct RootReducer {
-    // environment: super::Environment,
-}
-
-// impl Default for RootReducer {
-//     fn default() -> Self {
-//         Self {
-//             environment: Default::default(),
-//         }
-//     }
-// }
+pub struct RootReducer {}
 
 #[derive(Clone, Debug)]
 pub enum Message {
     Reload,
 }
-
-// impl IntoAction<Action> for Message {
-//     fn into_action(self) -> Action {
-//         Action::Message(self)
-//     }
-// }
 
 #[derive(Clone)]
 pub enum DelegateMessage {
@@ -72,11 +49,6 @@ impl navicula::traits::Reducer for RootReducer {
     type State = State;
 
     type Environment = crate::model::Environment;
-
-    // Provide the environment
-    // fn environment(&self) -> &Self::Environment {
-    //     &self.environment
-    // }
 
     fn reduce<'a, 'b>(
         context: &'a impl MessageContext<Self::Action, Self::DelegateMessage, Self::Message>,

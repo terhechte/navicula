@@ -1,6 +1,3 @@
-mod navicula;
-
-// Temporary!
 pub mod chat;
 pub mod model;
 pub mod root;

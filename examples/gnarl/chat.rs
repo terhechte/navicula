@@ -1,14 +1,12 @@
+use navicula::{
+    self,
+    effect::Effect,
+    traits::{Reducer, VviewStore},
+    types::MessageContext,
+};
 use std::time::Duration;
 
-use crate::{
-    model::{Chat, Message},
-    navicula::{
-        self,
-        effect::Effect,
-        traits::{Reducer, ReducerContext, VviewStore},
-        types::MessageContext,
-    },
-};
+use crate::model::{Chat, Message};
 use dioxus::prelude::*;
 
 pub struct ChildReducer {
@@ -27,12 +25,6 @@ impl State {
 
 #[derive(Clone)]
 pub enum ChildMessage {}
-
-// impl IntoAction<Action> for Message {
-//     fn into_action(self) -> Action {
-//         Action::Initial
-//     }
-// }
 
 #[derive(Clone)]
 pub enum DelegateMessage {

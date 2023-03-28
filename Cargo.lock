@@ -1876,7 +1876,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "navicula_traits"
+name = "navicula"
 version = "0.1.0"
 dependencies = [
  "dioxus",

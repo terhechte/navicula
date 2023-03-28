@@ -4,13 +4,10 @@ use futures_util::{future::BoxFuture, Future, FutureExt};
 
 use super::{publisher::AnySubscription, traits::AnyHashable};
 
-// FIXME: Wrap with InnerEffect so only methods expose effects
 pub(super) enum InnerEffect<'a, A> {
     Future(BoxFuture<'a, A>),
     Action(A),
     Delay(Duration, Box<InnerEffect<'a, A>>),
-    // Subscription(Box<dyn EventReceiver<A>>),
-    // Subscription(flume::Receiver<A>, AnyHashable),
     Subscription(AnySubscription),
     Multiple(Vec<InnerEffect<'a, A>>),
     Nothing,
@@ -71,12 +68,7 @@ impl<'a, A> Effect<'a, A> {
         })))
     }
 
-    pub fn debounce<T, FU, M>(
-        fu: FU,
-        mapper: M,
-        duration: Duration,
-        bouncer: SearchDebounce,
-    ) -> Self
+    pub fn debounce<T, FU, M>(fu: FU, mapper: M, duration: Duration, bouncer: Debouncer) -> Self
     where
         FU: Future<Output = T> + Send + 'a,
         M: FnOnce(Option<T>) -> A + Send + Sync + 'a,
@@ -137,17 +129,9 @@ impl<'a, A> Effect<'a, A> {
 }
 
 #[derive(Clone, Default, Debug)]
-pub struct SearchDebounce(std::sync::Arc<std::sync::atomic::AtomicBool>);
+pub struct Debouncer(std::sync::Arc<std::sync::atomic::AtomicBool>);
 
-impl PartialEq for SearchDebounce {
-    fn eq(&self, other: &Self) -> bool {
-        true
-    }
-}
-
-impl Eq for SearchDebounce {}
-
-impl SearchDebounce {
+impl Debouncer {
     pub fn cancel(&self) {
         self.0.swap(true, std::sync::atomic::Ordering::SeqCst);
     }

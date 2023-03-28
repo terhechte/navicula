@@ -1,15 +1,11 @@
-use std::rc::Rc;
-
-use crate::{
-    model::Chat,
-    navicula::{
-        self,
-        effect::Effect,
-        traits::{Reducer, ReducerContext, VviewStore},
-        types::MessageContext,
-    },
-};
+use crate::model::Chat;
 use dioxus::prelude::*;
+use navicula::{
+    self,
+    effect::Effect,
+    traits::{Reducer, VviewStore},
+    types::MessageContext,
+};
 
 pub struct ChildReducer {
     // environment: super::Environment,
@@ -31,12 +27,6 @@ impl State {
 
 #[derive(Clone)]
 pub enum Message {}
-
-// impl IntoAction<Action> for Message {
-//     fn into_action(self) -> Action {
-//         Action::Initial
-//     }
-// }
 
 #[derive(Clone)]
 pub enum DelegateMessage {
@@ -100,10 +90,6 @@ impl navicula::traits::Reducer for ChildReducer {
     fn initial_action() -> Option<Self::Action> {
         Some(Action::Initial)
     }
-
-    // fn environment(&self) -> &Self::Environment {
-    //     &self.environment
-    // }
 }
 
 // Implement the conversion for the `Root` parent
