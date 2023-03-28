@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::{
     model::{Chat, Message},
     navicula::{
@@ -43,6 +45,7 @@ pub enum Action {
     Close,
     Chats(usize),
     Edit(Message),
+    Edit2(Message),
     FinishEdit,
 }
 
@@ -74,6 +77,9 @@ impl navicula::traits::Reducer for ChildReducer {
                 log::info!("Have {cnt} chats");
             }
             Action::Edit(message) => {
+                return Effect::action(Action::Edit2(message)).delay(Duration::from_secs(2))
+            }
+            Action::Edit2(message) => {
                 environment
                     .selected
                     .with_mutation(|mut s| *s = Some(message));

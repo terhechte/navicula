@@ -654,8 +654,19 @@ fn rrun<'a, T, R: Reducer + 'static>(
 
     let eval = dioxus_desktop::use_eval(&cx);
 
+    // Special handling for the delay action. This will return an Effect, not an Action, so we need
+    // a way to handle running this code again once an effect has been created at a later point in time
+    let later_effect: &UseRef<Option<InnerEffect<'_, R::Action>>> = use_ref(cx, || None);
+
     // Convert actions into effects and then handle in a loop
     let mut effects: Vec<_> = known_actions.drain(0..).map(InnerEffect::Action).collect();
+
+    {
+        let mut m = later_effect.write_silent();
+        if let Some(e) = m.take() {
+            effects.insert(0, e);
+        }
+    }
 
     if !effects.is_empty() {
         // let mut current_runtime = runtime.write_silent();
@@ -669,9 +680,15 @@ fn rrun<'a, T, R: Reducer + 'static>(
                     InnerEffect::Future(fut) => {
                         coroutine.send(fut);
                     }
-                    InnerEffect::Delay(d, a) => {
-                        // FIXME: Implement
-                        panic!()
+                    InnerEffect::Delay(d, e) => {
+                        let cloned_later = later_effect.clone();
+                        cx.push_future(async move {
+                            tokio::time::sleep(d.into()).await;
+                            let unwrapped = *e;
+                            cloned_later.with_mut(|w| {
+                                w.replace(unwrapped);
+                            })
+                        });
                     }
                     InnerEffect::Action(action) => {
                         let next =
