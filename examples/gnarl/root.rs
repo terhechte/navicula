@@ -1,5 +1,7 @@
 use dioxus::prelude::*;
-use navicula::{self, effect::Effect, traits::VviewStore, types::MessageContext};
+use navicula::{
+    self, effect::Effect, reducer::Reducer, types::MessageContext, viewstore::ViewStore,
+};
 
 use crate::model::Chat;
 
@@ -39,7 +41,7 @@ impl State {
     }
 }
 
-impl navicula::traits::Reducer for RootReducer {
+impl Reducer for RootReducer {
     type Message = Message;
 
     type DelegateMessage = DelegateMessage;
@@ -92,7 +94,7 @@ impl navicula::traits::Reducer for RootReducer {
 }
 
 #[inline_props]
-pub fn root<'a>(cx: Scope<'a>, store: VviewStore<'a, RootReducer>) -> Element<'a> {
+pub fn root<'a>(cx: Scope<'a>, store: ViewStore<'a, RootReducer>) -> Element<'a> {
     println!("root {:?}", cx.scope_id());
     render! {
         div {
@@ -110,7 +112,7 @@ pub fn root<'a>(cx: Scope<'a>, store: VviewStore<'a, RootReducer>) -> Element<'a
 }
 
 #[inline_props]
-fn sidebar<'a>(cx: Scope<'a>, store: &'a VviewStore<'a, RootReducer>) -> Element<'a> {
+fn sidebar<'a>(cx: Scope<'a>, store: &'a ViewStore<'a, RootReducer>) -> Element<'a> {
     println!("sidebar {:?}", cx.scope_id());
     render! {
         div {
@@ -128,7 +130,7 @@ fn sidebar<'a>(cx: Scope<'a>, store: &'a VviewStore<'a, RootReducer>) -> Element
 #[inline_props]
 fn selected_message<'a>(
     cx: Scope<'a>,
-    store: &'a VviewStore<'a, RootReducer>,
+    store: &'a ViewStore<'a, RootReducer>,
     chat: &'a Chat,
 ) -> Element<'a> {
     cx.use_hook(|| Drops(cx.scope_id().0));

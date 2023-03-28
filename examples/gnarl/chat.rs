@@ -1,15 +1,16 @@
 use navicula::{
     self,
     effect::Effect,
-    traits::{Reducer, VviewStore},
+    reducer::{ChildReducer, Reducer},
     types::MessageContext,
+    viewstore::ViewStore,
 };
 use std::time::Duration;
 
 use crate::model::{Chat, Message};
 use dioxus::prelude::*;
 
-pub struct ChildReducer {
+pub struct ChatChildReducer {
     // environment: super::Environment,
 }
 
@@ -41,7 +42,7 @@ pub enum Action {
     FinishEdit,
 }
 
-impl navicula::traits::Reducer for ChildReducer {
+impl Reducer for ChatChildReducer {
     type Message = ChildMessage;
 
     type DelegateMessage = DelegateMessage;
@@ -89,14 +90,10 @@ impl navicula::traits::Reducer for ChildReducer {
     fn initial_action() -> Option<Self::Action> {
         Some(Action::Initial)
     }
-
-    // fn environment(&self) -> &Self::Environment {
-    //     &self.environment
-    // }
 }
 
 // Implement the conversion for the `Root` parent
-impl navicula::traits::ChildReducer<crate::root::RootReducer> for ChildReducer {
+impl ChildReducer<crate::root::RootReducer> for ChatChildReducer {
     fn to_child(
         _message: <crate::root::RootReducer as Reducer>::Message,
     ) -> Option<<Self as Reducer>::Action> {
@@ -113,7 +110,7 @@ impl navicula::traits::ChildReducer<crate::root::RootReducer> for ChildReducer {
 }
 
 #[inline_props]
-pub fn root<'a>(cx: Scope<'a>, store: VviewStore<'a, ChildReducer>) -> Element<'a> {
+pub fn root<'a>(cx: Scope<'a>, store: ViewStore<'a, ChatChildReducer>) -> Element<'a> {
     render! {
         div {
             display: "flex",
@@ -140,7 +137,7 @@ pub fn root<'a>(cx: Scope<'a>, store: VviewStore<'a, ChildReducer>) -> Element<'
 pub fn message<'a>(
     cx: Scope<'a>,
     message: &'a Message,
-    store: &'a VviewStore<'a, ChildReducer>,
+    store: &'a ViewStore<'a, ChatChildReducer>,
 ) -> Element<'a> {
     render! {
         p {
@@ -180,7 +177,7 @@ mod edit {
         Done,
     }
 
-    impl navicula::traits::Reducer for EditReducer {
+    impl Reducer for EditReducer {
         type Message = ChildMessage;
         type DelegateMessage = DelegateMessage;
         type Action = EditAction;
@@ -215,24 +212,24 @@ mod edit {
         }
     }
 
-    impl navicula::traits::ChildReducer<ChildReducer> for EditReducer {
+    impl ChildReducer<ChatChildReducer> for EditReducer {
         fn to_child(
-            _message: <ChildReducer as Reducer>::Message,
+            _message: <ChatChildReducer as Reducer>::Message,
         ) -> Option<<Self as Reducer>::Action> {
             None
         }
 
         fn from_child(
             message: <Self as Reducer>::DelegateMessage,
-        ) -> Option<<ChildReducer as Reducer>::Action> {
+        ) -> Option<<ChatChildReducer as Reducer>::Action> {
             match message {
-                DelegateMessage::Done => Some(<ChildReducer as Reducer>::Action::FinishEdit),
+                DelegateMessage::Done => Some(<ChatChildReducer as Reducer>::Action::FinishEdit),
             }
         }
     }
 
     #[inline_props]
-    pub fn root<'a>(cx: Scope<'a>, store: VviewStore<'a, EditReducer>) -> Element<'a> {
+    pub fn root<'a>(cx: Scope<'a>, store: ViewStore<'a, EditReducer>) -> Element<'a> {
         let Some(message) = store.message.as_ref() else {
             return render!(div{})
         };

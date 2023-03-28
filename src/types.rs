@@ -29,3 +29,22 @@ pub trait MessageContext<Action, DelegateMessage, Message>: UpdaterContext<Actio
     fn send_children(&self, message: Message);
     fn window(&self) -> &AppWindow;
 }
+
+#[derive(Clone)]
+pub struct ActionSender<Action: Clone> {
+    pub(crate) sender: flume::Sender<Action>,
+    pub(crate) updater: Arc<dyn Fn() + Send + Sync + 'static>,
+}
+
+impl<Action: Clone> ActionSender<Action> {
+    pub fn send(&self, action: Action) {
+        if let Err(e) = self.sender.send(action) {
+            log::error!("Could not send action {e:?}");
+        }
+        (*self.updater)();
+    }
+}
+
+pub trait EnvironmentType {
+    type AppEvent;
+}

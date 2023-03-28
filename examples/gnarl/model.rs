@@ -1,4 +1,4 @@
-use navicula::{publisher::RefPublisher, traits::EnvironmentType};
+use navicula::{publisher::RefPublisher, types::EnvironmentType};
 
 #[derive(Default)]
 pub struct Environment {

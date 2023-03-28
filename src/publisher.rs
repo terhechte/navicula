@@ -4,8 +4,8 @@ use std::sync::{Arc, RwLock};
 
 use fxhash::FxHashMap;
 
+use super::anyhashable::AnyHashable;
 use super::effect::Effect;
-use super::traits::AnyHashable;
 use super::types::UpdaterContext;
 
 pub trait Publisher {

@@ -1,207 +1,22 @@
+use super::anyhashable::AnyHashable;
 use dioxus::prelude::*;
 use futures_util::{future::BoxFuture, StreamExt};
 use fxhash::FxHashMap;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::mem::MaybeUninit;
 use std::ops::Deref;
-use std::sync::RwLock;
 use std::{rc::Rc, sync::Arc};
 
-use super::publisher::{AnySubscription, Subscription};
+use super::publisher::Subscription;
 use super::types::{MessageContext, UpdaterContext};
 use super::{
-    effect::{Effect, InnerEffect},
-    types::AppWindow,
+    effect::InnerEffect,
+    reducer::{ChildReducer, Reducer},
+    runtime::Runtime,
+    types::{ActionSender, AppWindow},
+    viewstore::ViewStore,
 };
 
-struct Drops(Box<dyn Fn()>);
-
-impl Drops {
-    fn register<'a, T>(cx: Scope<'a, T>, msg: &'static str) {
-        let id = cx.scope_id().0;
-        cx.use_hook(move || {
-            Drops(Box::new(move || {
-                println!("Dropped: {} {}", id, msg);
-            }))
-        });
-    }
-
-    fn action<'a, T>(cx: Scope<'a, T>, a: impl Fn() + 'static) {
-        let boxed = Box::new(move || a());
-        cx.use_hook(move || Drops(boxed));
-    }
-}
-
-impl Drop for Drops {
-    fn drop(&mut self) {
-        (self.0)()
-    }
-}
-
-pub trait Reducer {
-    /// A reducer can be messaged from a parent.
-    /// `Messages` are send parent to child
-    type Message: Clone; // + IntoAction<Self::Action>;
-
-    /// This type is used to delegate from a Child Reducer
-    /// back to its parent. The parent can then decide whether
-    /// to consume this event or whether to ignore it.
-    /// DelegateMessages are send child to parent
-    type DelegateMessage: Clone;
-
-    /// The action is the internal type of the Reducer. It cannot
-    /// be called or accessed by the outside
-    type Action: Clone + Send;
-
-    /// The state that this reducer can act upon
-    type State;
-
-    // The environment type we're using
-    type Environment: EnvironmentType;
-
-    fn reduce<'a, 'b>(
-        //context: &'a ReducerContext<'a, Self::Action, Self::Message, Self::DelegateMessage>,
-        context: &'a impl MessageContext<Self::Action, Self::DelegateMessage, Self::Message>,
-        action: Self::Action,
-        state: &'a mut Self::State,
-        environment: &'a Self::Environment,
-    ) -> Effect<'b, Self::Action>;
-
-    /// Define the initial action when the reducer starts up
-    fn initial_action() -> Option<Self::Action>;
-
-    // Provide the initial state
-    // fn initial_state(environment: &Self::Environment) -> Self::State;
-
-    // Provide the environment
-    // fn environment(&self) -> &Self::Environment;
-}
-
-pub trait ChildReducer<Parent: Reducer>: Reducer {
-    // type Parent: Reducer;
-
-    fn to_child(message: <Parent as Reducer>::Message) -> Option<<Self as Reducer>::Action>;
-
-    fn from_child(message: <Self as Reducer>::DelegateMessage) -> Option<Parent::Action>;
-}
-
-// pub trait IntoAction<Action> {
-//     fn into_action(self) -> Action;
-// }
-
-pub trait EnvironmentType {
-    type AppEvent;
-}
-
-/// Allows converting any kind of external event system
-pub trait IntoMessageSender<Message> {
-    fn into_sender(
-        &self,
-        updater: Arc<dyn Fn(Message) + Send + Sync + 'static>,
-    ) -> Arc<dyn Fn(Message) + Send + Sync>;
-}
-
-pub struct VviewStore<'a, R: Reducer + 'static> {
-    // actions: &'a mut R::Action,
-    //updater: Box<dyn Fn()>,
-    // sender: ActionSender<R::Action>,
-    //state: Ref<'a, R::State>,
-    state: &'a R::State,
-    environment: &'a R::Environment,
-    /// This state is kept separate so that it can be
-    /// kept in a `UseRef` and is only created once
-    runtime: &'a UseState<Rruntime<R>>,
-}
-
-impl<'a, R: Reducer> VviewStore<'a, R> {
-    pub fn send(&self, action: R::Action) {
-        //self.runtime.read().sender.send(action);
-        self.runtime.get().sender.send(action);
-    }
-
-    pub fn sender(&self) -> ActionSender<R::Action> {
-        //self.runtime.read().sender.clone()
-        self.runtime.get().sender.clone()
-    }
-}
-
-impl<'a, R: Reducer> std::ops::Deref for VviewStore<'a, R> {
-    type Target = R::State;
-
-    fn deref(&self) -> &Self::Target {
-        self.state.deref()
-    }
-}
-
-struct Rruntime<R: Reducer> {
-    scope_id: usize,
-    /// Send an action that will be processed afterwards
-    sender: ActionSender<R::Action>,
-    /// External events. Can be of a variety of notification mechamisms.
-    /// They should all use the `updater` they were handed to notify
-    /// that a new `Action` was generated
-    // external_messages: Vec<Arc<dyn Fn(R::Message) + Send + Sync>>,
-    // FIXME: Drop Action?
-    child_senders: RwLock<fxhash::FxHashMap<usize, Rc<dyn Fn(R::Message)>>>,
-    /// When a child drops, it uses this to notify the parent (with the scope id)
-    // notify_drop: Option<Box<dyn Fn(usize)>>,
-    /// Current subscriptions so they can be cleared on drop
-    subscriptions: RwLock<Vec<AnySubscription>>,
-}
-
-impl<R: Reducer> Rruntime<R> {
-    fn new(
-        scope_id: usize,
-        sender: ActionSender<R::Action>,
-        // external_messages: Vec<Arc<dyn Fn(R::Message) + Send + Sync>>,
-    ) -> Self {
-        Self {
-            scope_id,
-            sender,
-            // external_messages,
-            child_senders: Default::default(),
-            // notify_drop: None,
-            subscriptions: Default::default(),
-        }
-    }
-}
-
-// impl<R: Reducer> Drop for Rruntime<R> {
-//     fn drop(&mut self) {
-//         println!("drop drop {}", self.scope_id);
-//         if let Some(ref notifier) = self.notify_drop {
-//             log::trace!("Dropping {self:?}");
-//             notifier(self.scope_id)
-//         }
-//     }
-// }
-
-impl<R: Reducer> std::fmt::Debug for Rruntime<R> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Rruntime")
-            .field("scope_id", &self.scope_id)
-            .field("subscriptions", &self.subscriptions.read().unwrap().len())
-            .finish()
-    }
-}
-
-#[derive(Clone)]
-pub struct ActionSender<Action: Clone> {
-    sender: flume::Sender<Action>,
-    updater: Arc<dyn Fn() + Send + Sync + 'static>,
-}
-
-impl<Action: Clone> ActionSender<Action> {
-    pub fn send(&self, action: Action) {
-        if let Err(e) = self.sender.send(action) {
-            log::error!("Could not send action {e:?}");
-        }
-        (*self.updater)();
-    }
-}
-
-impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
+impl<'a, ParentR: Reducer> ViewStore<'a, ParentR> {
     /// Host with a payload value. If `Value` changes, the state will be reset.
     /// The `Value` has to be `Clone` because we keep the last value around in order
     /// to compare it.
@@ -214,13 +29,12 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         cx: Scope<'a, T>,
         value: Value,
         state: impl Fn(Value) -> ChildR::State,
-    ) -> VviewStore<'a, ChildR>
+    ) -> ViewStore<'a, ChildR>
     where
         // 'a: 'b,
         ChildR: 'static,
         ParentR: 'static,
     {
-        Drops::register(cx, "host_with");
         let (child_sender, child_receiver) = cx.use_hook(|| flume::unbounded());
 
         // Send the initial action once.
@@ -258,13 +72,12 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         &'a self,
         cx: Scope<'a, T>,
         state: impl FnOnce() -> ChildR::State,
-    ) -> VviewStore<'a, ChildR>
+    ) -> ViewStore<'a, ChildR>
     where
         // 'a: 'b,
         ChildR: 'static,
         ParentR: 'static,
     {
-        Drops::register(cx, "host");
         let child_state = cx.use_hook(|| MaybeUninit::new(state()));
 
         let (child_sender, child_receiver) = cx.use_hook(|| flume::unbounded());
@@ -281,7 +94,6 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         self.host_internal(cx, child_state, child_sender, child_receiver, false)
     }
 
-    // FIXME: Figure out the reset_state!
     fn host_internal<ChildR: ChildReducer<ParentR, Environment = ParentR::Environment>, T>(
         &'a self,
         cx: Scope<'a, T>,
@@ -289,24 +101,15 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         child_sender: &'a mut flume::Sender<<ChildR as Reducer>::Action>,
         child_receiver: &'a mut flume::Receiver<<ChildR as Reducer>::Action>,
         reset: bool,
-    ) -> VviewStore<'a, ChildR>
+    ) -> ViewStore<'a, ChildR>
     where
         // 'a: 'b,
         ChildR: 'static,
         ParentR: 'static,
     {
-        println!("host internal {:?}", cx.scope_id());
-        Drops::register(cx, "host_internal");
         let environment = self.environment;
 
-        // FIXME: reset_state
-        // let reset_state = false;
-        // if reset_state {
-        //     *child_state.write_silent() = state();
-        // }
-
         let scope_id = cx.scope_id().0;
-        // let parent_runtime = self.runtime.read();
         let parent_sender = self.runtime.get().sender.clone();
 
         // Allow the child to send `DelegateMessage` messages
@@ -325,7 +128,6 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
         let updater = cx.schedule_update();
         let cloned_child_sender = child_sender.clone();
         cx.use_hook(|| {
-            // self.runtime.with(|parent_runtime| {
             let sender = Rc::new(move |action| {
                 let Some(child_message) = ChildR::to_child(action) else {
                     log::error!("failed to convert action for child");
@@ -342,7 +144,6 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
                 println!("{}", include_str!("error_message.txt"));
             }
             s.insert(scope_id, sender);
-            // });
         });
 
         let updater = cx.schedule_update();
@@ -355,8 +156,6 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
                 updater()
             })
         });
-
-        // std::mem::forget(parent_runtime);
 
         let mut context: ReducerContext<
             'a,
@@ -373,32 +172,23 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
             updater: updater.clone(),
         };
 
-        // rrun(cx, context, child_state, external_events, reducer)
-
-        // let child_view_store = run(context, reducer_state, environment_builder, initial_action, external_events, reducer)
-        let view_store = rrun(cx, &mut context, child_state, environment, child_sender);
+        let view_store = run_reducer(cx, &mut context, child_state, environment, child_sender);
 
         // Register a drop handler to remove the child senders
         // and subscriptions
-        Drops::register(cx, "host_internal pre-drop");
         let xparent_runtime = self.runtime.clone();
         let xchild_runtime = view_store.runtime.clone();
         Drops::action(cx, move || {
-            log::info!("Inner Drop {scope_id}");
-
             let mut s = xparent_runtime.child_senders.write().unwrap();
             s.remove(&scope_id);
 
             // remove the child subscriptions
             let mut ct = xchild_runtime.subscriptions.write().unwrap();
             for sub in ct.iter() {
-                log::info!("Inner Drop Subscription {scope_id}");
                 sub.cancel();
             }
             ct.clear();
         });
-
-        // let rrr = view_store.runtime.clone();
 
         // this is not optimal. if reset state is on, we also need to
         // get rid of the old subscriptions. this should kinda work via
@@ -413,26 +203,21 @@ impl<'a, ParentR: Reducer> VviewStore<'a, ParentR> {
                 sub.cancel();
             }
             ct.clear();
-            // FIXME: More?
         }
 
-        // root(cx, view_store)
         view_store
     }
 }
-
-// pub trait HostChild
 
 pub fn root<'a, R: Reducer, T>(
     cx: Scope<'a, T>,
     // reducer: R,
     environment: &'a R::Environment,
     state: impl FnOnce() -> R::State,
-) -> VviewStore<'a, R>
+) -> ViewStore<'a, R>
 where
     R: 'static,
 {
-    //let state = cx.use_hook(|| Cell::new(Some(R::initial_state(environment))));
     let state = cx.use_hook(|| MaybeUninit::new(state()));
 
     let (child_sender, action_receiver) = cx.use_hook(|| flume::unbounded());
@@ -462,13 +247,11 @@ where
             updater: updater.clone(),
         };
 
-    let view_store = rrun(cx, &mut context, state, environment, child_sender);
+    let view_store = run_reducer(cx, &mut context, state, environment, child_sender);
 
     view_store
 }
 
-// FIXME: Reducers always send `Actions` which are then converted to `DelegateMessage` if they
-// come from a Child or to `Message` if they come from a parent
 pub struct ReducerContext<'a, Action, Message, DelegateMessage> {
     /// The queue of next actions to this reducer
     action_receiver: &'a flume::Receiver<Action>,
@@ -512,17 +295,13 @@ impl<'a, Action, Message: Clone, DelegateMessage> MessageContext<Action, Delegat
     }
 }
 
-fn rrun<'a, T, R: Reducer + 'static>(
+fn run_reducer<'a, T, R: Reducer + 'static>(
     cx: Scope<'a, T>,
     context: &mut ReducerContext<'a, R::Action, R::Message, R::DelegateMessage>,
-    //state: &'a mut Cell<Option<R::State>>,
     state: &'a mut MaybeUninit<R::State>,
     environment: &'a R::Environment,
     action_sender: &'a mut flume::Sender<R::Action>,
-) -> VviewStore<'a, R>
-// where
-//     R: 'static,
-{
+) -> ViewStore<'a, R> {
     let scope_id = cx.scope_id().0;
     let updater = cx.schedule_update();
 
@@ -531,18 +310,8 @@ fn rrun<'a, T, R: Reducer + 'static>(
         updater: updater.clone(),
     };
 
-    // Sending new actions
-    // let (action_receiver, action_sender) = cx.use_hook(|| {
-    //     let (sender, receiver) = flume::unbounded::<R::Action>();
-    //     let sender = ActionSender {
-    //         sender,
-    //         updater: updater.clone(),
-    //     };
-    //     (receiver, sender)
-    // });
-
-    let runtime: &UseState<Rruntime<R>> = use_state(cx, || {
-        Rruntime::new(
+    let runtime: &UseState<Runtime<R>> = use_state(cx, || {
+        Runtime::new(
             scope_id,
             ActionSender {
                 sender: action_sender.clone(),
@@ -557,35 +326,16 @@ fn rrun<'a, T, R: Reducer + 'static>(
     {
         let current_child_senders = runtime.child_senders.read().unwrap();
         if !current_child_senders.is_empty() {
-            // Need to be wrapped so they convert from Message to Action
-            context.child_messages = current_child_senders
-                .values()
-                .cloned()
-                // .map(|e| Rc::new(move |message| e(message.into_action())))
-                .collect();
+            context.child_messages = current_child_senders.values().cloned().collect();
         }
     }
-    // let mut known_actions = cx.use_hook(|| {
-    //     if let Some(initial_action) = R::initial_action() {
-    //         vec![initial_action]
-    //     } else {
-    //         Vec::new()
-    //     }
-    // });
-    let mut known_actions = Vec::new();
 
-    // Get the initial action
+    let mut known_actions = Vec::new();
 
     // Read all events that have been sent
     for action in context.action_receiver.try_iter() {
         known_actions.push(action);
     }
-    // Read all external events
-    // if let Some(ref receiver) = external_receiver {
-    //     for action in receiver.try_iter() {
-    //         known_actions.push(action);
-    //     }
-    // }
 
     // Read all other receiver events
     for receiver in context.receivers.values() {
@@ -595,7 +345,6 @@ fn rrun<'a, T, R: Reducer + 'static>(
     }
 
     // set up the coroutine that handles async actions
-    // FIXME: Only the root should create this coroutine?
     let cloned_sender = action_sender.clone();
     let coroutine = use_coroutine(
         cx,
@@ -630,8 +379,6 @@ fn rrun<'a, T, R: Reducer + 'static>(
     }
 
     if !effects.is_empty() {
-        // let mut current_runtime = runtime.write_silent();
-
         let mut current_state = unsafe { state.assume_init_mut() };
 
         loop {
@@ -682,16 +429,11 @@ fn rrun<'a, T, R: Reducer + 'static>(
                     InnerEffect::Timer(duration, action, id) => {
                         #[cfg(not(target_arch = "wasm32"))]
                         {
-                            // let update_fn = context.cx().schedule_update();
                             let cloned_action = action;
 
                             {
-                                // let mut runtime = runtime.write_silent();
                                 let (sender, receiver) = flume::unbounded();
                                 context.receivers.insert(id.id(), receiver);
-                                // runtime
-                                //     .receivers
-                                //     .push(Some(Box::new(TimerEventReceiver::new(receiver))));
 
                                 let cloned_updater = updater.clone();
                                 context.timers.insert(
@@ -727,24 +469,10 @@ fn rrun<'a, T, R: Reducer + 'static>(
             }
             break;
         }
-
-        // let is_equal = reducer_state.read().eq(&current_state);
-        // if !is_equal {
-        //     *reducer_state.write() = current_state;
-        // }
     }
 
-    // ?
-    // let mut events = Vec::with_capacity(10);
-    // for oreceiver in runtime.read().receivers.iter() {
-    //     let Some(receiver) = oreceiver else { continue };
-    //     if let Some(action) = receiver.receive() {
-    //         events.push(action);
-    //     }
-    // }
-
     unsafe {
-        VviewStore {
+        ViewStore {
             state: state.assume_init_ref(),
             environment,
             runtime,
@@ -752,44 +480,17 @@ fn rrun<'a, T, R: Reducer + 'static>(
     }
 }
 
-/// Simple Hashable
-trait SimpleHashable {
-    fn hashed(&self) -> u64;
-}
+struct Drops(Box<dyn Fn()>);
 
-impl<'a> SimpleHashable for &'a str {
-    fn hashed(&self) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        self.hash(&mut hasher);
-        hasher.finish()
+impl Drops {
+    fn action<'a, T>(cx: Scope<'a, T>, a: impl Fn() + 'static) {
+        let boxed = Box::new(move || a());
+        cx.use_hook(move || Drops(boxed));
     }
 }
 
-impl SimpleHashable for usize {
-    fn hashed(&self) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        self.hash(&mut hasher);
-        hasher.finish()
-    }
-}
-
-#[derive(Clone, Eq, PartialEq, Hash)]
-pub struct AnyHashable(u64);
-
-impl AnyHashable {
-    pub fn id(&self) -> u64 {
-        self.0
-    }
-}
-
-impl<'a> From<&str> for AnyHashable {
-    fn from(value: &str) -> Self {
-        AnyHashable(value.hashed())
-    }
-}
-
-impl<'a> From<usize> for AnyHashable {
-    fn from(value: usize) -> Self {
-        AnyHashable(value.hashed())
+impl Drop for Drops {
+    fn drop(&mut self) {
+        (self.0)()
     }
 }

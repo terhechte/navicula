@@ -2,7 +2,7 @@ use std::{pin::Pin, time::Duration};
 
 use futures_util::{future::BoxFuture, Future, FutureExt};
 
-use super::{publisher::AnySubscription, traits::AnyHashable};
+use super::{anyhashable::AnyHashable, publisher::AnySubscription};
 
 pub(super) enum InnerEffect<'a, A> {
     Future(BoxFuture<'a, A>),

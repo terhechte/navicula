@@ -3,13 +3,12 @@ use dioxus::prelude::*;
 use navicula::{
     self,
     effect::Effect,
-    traits::{Reducer, VviewStore},
+    reducer::{ChildReducer, Reducer},
     types::MessageContext,
+    viewstore::ViewStore,
 };
 
-pub struct ChildReducer {
-    // environment: super::Environment,
-}
+pub struct SidebarChildReducer {}
 
 pub struct State {
     chats: Vec<Chat>,
@@ -52,7 +51,7 @@ impl std::fmt::Display for Action {
     }
 }
 
-impl navicula::traits::Reducer for ChildReducer {
+impl Reducer for SidebarChildReducer {
     type Message = Message;
 
     type DelegateMessage = DelegateMessage;
@@ -93,7 +92,7 @@ impl navicula::traits::Reducer for ChildReducer {
 }
 
 // Implement the conversion for the `Root` parent
-impl navicula::traits::ChildReducer<crate::root::RootReducer> for ChildReducer {
+impl ChildReducer<crate::root::RootReducer> for SidebarChildReducer {
     fn to_child(
         message: <crate::root::RootReducer as Reducer>::Message,
     ) -> Option<<Self as Reducer>::Action> {
@@ -112,7 +111,7 @@ impl navicula::traits::ChildReducer<crate::root::RootReducer> for ChildReducer {
 }
 
 #[inline_props]
-pub fn root<'a>(cx: Scope<'a>, store: VviewStore<'a, ChildReducer>) -> Element<'a> {
+pub fn root<'a>(cx: Scope<'a>, store: ViewStore<'a, SidebarChildReducer>) -> Element<'a> {
     render! {
         div {
             display: "flex",
