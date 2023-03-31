@@ -20,14 +20,22 @@ impl<'a> AppWindow<'a> {
     }
 }
 
+impl<'a> std::ops::Deref for AppWindow<'a> {
+    type Target = DesktopContext;
+
+    fn deref(&self) -> &Self::Target {
+        self.window
+    }
+}
+
 pub trait UpdaterContext<Action> {
+    fn window(&self) -> &AppWindow;
     fn updater(&self) -> &Arc<dyn Fn(Action) + Send + Sync>;
 }
 
 pub trait MessageContext<Action, DelegateMessage, Message>: UpdaterContext<Action> {
     fn send_parent(&self, message: DelegateMessage);
     fn send_children(&self, message: Message);
-    fn window(&self) -> &AppWindow;
 }
 
 #[derive(Clone)]

@@ -275,6 +275,10 @@ impl<'a, Action, Message: Clone, DelegateMessage> UpdaterContext<Action>
     fn updater(&self) -> &Arc<dyn Fn(Action) + Send + Sync> {
         &self.updater
     }
+
+    fn window(&self) -> &AppWindow {
+        &self.window
+    }
 }
 
 impl<'a, Action, Message: Clone, DelegateMessage> MessageContext<Action, DelegateMessage, Message>
@@ -288,10 +292,6 @@ impl<'a, Action, Message: Clone, DelegateMessage> MessageContext<Action, Delegat
         for child in self.child_messages.iter() {
             (*child)(message.clone());
         }
-    }
-
-    fn window(&self) -> &AppWindow {
-        &self.window
     }
 }
 

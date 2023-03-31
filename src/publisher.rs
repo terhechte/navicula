@@ -1,6 +1,6 @@
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::rc::Rc;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 
 use fxhash::FxHashMap;
 
@@ -32,7 +32,7 @@ pub trait Subscription {
 #[derive(Clone)]
 pub struct RefSubscription<Data> {
     id: u64,
-    subscribers: Arc<RwLock<FxHashMap<u64, Box<dyn Fn(Rc<RefCell<Data>>) + Send + Sync>>>>,
+    subscribers: Rc<RwLock<FxHashMap<u64, Box<dyn Fn(Rc<RefCell<Data>>) + Send + Sync>>>>,
 }
 
 impl<Data: 'static> RefSubscription<Data> {
@@ -59,8 +59,9 @@ impl<Data> Subscription for RefSubscription<Data> {
 pub struct RefPublisher<Data> {
     data: Rc<RefCell<Data>>,
     version: Rc<Cell<u64>>,
-    /// subscribe to storage changes
-    subscribers: Arc<RwLock<FxHashMap<u64, Box<dyn Fn(Rc<RefCell<Data>>) + Send + Sync>>>>,
+    /// subscribe to storage changes. We're not using a `RefCell` as that can lead
+    /// to multiple borrow crashes here
+    subscribers: Rc<RwLock<FxHashMap<u64, Box<dyn Fn(Rc<RefCell<Data>>) + Send + Sync>>>>,
 }
 
 impl<Data> RefPublisher<Data> {
