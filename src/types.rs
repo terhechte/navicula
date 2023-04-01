@@ -4,6 +4,7 @@ use std::sync::Arc;
 use dioxus::prelude::Scope;
 use dioxus_desktop::{use_window, DesktopContext, EvalResult};
 
+#[derive(Copy, Clone)]
 pub struct AppWindow<'a> {
     window: &'a DesktopContext,
 }

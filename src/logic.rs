@@ -21,17 +21,17 @@ impl<'a, ParentR: Reducer> ViewStore<'a, ParentR> {
     /// The `Value` has to be `Clone` because we keep the last value around in order
     /// to compare it.
     pub fn host_with<
+        'b,
         ChildR: ChildReducer<ParentR, Environment = ParentR::Environment>,
         T,
         Value: PartialEq + Clone + 'static,
     >(
         &'a self,
         cx: Scope<'a, T>,
-        value: Value,
+        value: &'b Value,
         state: impl Fn(Value) -> ChildR::State,
     ) -> ViewStore<'a, ChildR>
     where
-        // 'a: 'b,
         ChildR: 'static,
         ParentR: 'static,
     {
@@ -46,7 +46,7 @@ impl<'a, ParentR: Reducer> ViewStore<'a, ParentR> {
             }
         });
 
-        let last = use_ref(cx, || value.clone());
+        let last = use_ref(cx, move || value.clone());
         let reset_state = last.with(|last_rf| if last_rf.ne(&value) { true } else { false });
 
         let child_state = cx.use_hook(|| MaybeUninit::new(state(value.clone())));
@@ -54,7 +54,7 @@ impl<'a, ParentR: Reducer> ViewStore<'a, ParentR> {
         if reset_state {
             *last.write_silent() = value.clone();
             unsafe {
-                *child_state.assume_init_mut() = state(value);
+                *child_state.assume_init_mut() = state(value.clone());
             }
             // Send the initial value again
             if let Some(initial) = ChildR::initial_action() {
@@ -212,6 +212,7 @@ impl<'a, ParentR: Reducer> ViewStore<'a, ParentR> {
 pub fn root<'a, R: Reducer, T>(
     cx: Scope<'a, T>,
     // reducer: R,
+    receivers: &[flume::Receiver<R::Action>],
     environment: &'a R::Environment,
     state: impl FnOnce() -> R::State,
 ) -> ViewStore<'a, R>
@@ -221,6 +222,13 @@ where
     let state = cx.use_hook(|| MaybeUninit::new(state()));
 
     let (child_sender, action_receiver) = cx.use_hook(|| flume::unbounded());
+
+    // go through the recievers and pull all messages in
+    for r in receivers {
+        for entry in r.iter() {
+            child_sender.send(entry);
+        }
+    }
 
     let delegate_sender = cx.use_hook(|| move |_| {});
 

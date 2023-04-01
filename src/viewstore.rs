@@ -11,6 +11,16 @@ pub struct ViewStore<'a, R: Reducer + 'static> {
     pub(crate) runtime: &'a UseState<Runtime<R>>,
 }
 
+impl<'a, R: Reducer> Clone for ViewStore<'a, R> {
+    fn clone(&self) -> Self {
+        Self {
+            state: self.state,
+            environment: self.environment,
+            runtime: self.runtime,
+        }
+    }
+}
+
 impl<'a, R: Reducer> ViewStore<'a, R> {
     pub fn send(&self, action: R::Action) {
         self.runtime.get().sender.send(action);

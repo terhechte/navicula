@@ -20,7 +20,7 @@ pub struct State {
 
 impl State {
     pub fn new(chat: Chat) -> Self {
-        Self { chat }
+        Self { chat: chat.clone() }
     }
 }
 

@@ -138,7 +138,7 @@ fn selected_message<'a>(
     render! {
         crate::chat::root {
             key: "{chat.id}",
-            store: store.host_with(cx, (*chat).clone(), |s| crate::chat::State::new(s)),
+            store: store.host_with(cx, *chat, |s| crate::chat::State::new(s)),
         }
     }
 }
