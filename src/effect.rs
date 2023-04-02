@@ -6,6 +6,7 @@ use super::{anyhashable::AnyHashable, publisher::AnySubscription};
 
 pub(super) enum InnerEffect<'a, A> {
     Future(BoxFuture<'a, A>),
+    FireForget(BoxFuture<'a, ()>),
     Action(A),
     Delay(Duration, Box<InnerEffect<'a, A>>),
     Subscription(AnySubscription),
@@ -66,6 +67,13 @@ impl<'a, A> Effect<'a, A> {
         Self(InnerEffect::Future(Box::pin(async move {
             fu.map(move |o| mapper(o)).await
         })))
+    }
+
+    pub fn fire_forget<FU>(fu: FU) -> Self
+    where
+        FU: Future<Output = ()> + Send + 'a,
+    {
+        Self(InnerEffect::FireForget(Box::pin(async move { fu.await })))
     }
 
     pub fn debounce<T, FU, M>(fu: FU, mapper: M, duration: Duration, bouncer: Debouncer) -> Self

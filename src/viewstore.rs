@@ -3,6 +3,7 @@ use super::runtime::Runtime;
 use super::types::ActionSender;
 use dioxus::prelude::UseState;
 
+#[derive(Copy)]
 pub struct ViewStore<'a, R: Reducer + 'static> {
     pub(crate) state: &'a R::State,
     pub(crate) environment: &'a R::Environment,
@@ -18,6 +19,12 @@ impl<'a, R: Reducer> Clone for ViewStore<'a, R> {
             environment: self.environment,
             runtime: self.runtime,
         }
+    }
+}
+
+impl<'a, R: Reducer> PartialEq for ViewStore<'a, R> {
+    fn eq(&self, other: &Self) -> bool {
+        self.runtime.version.eq(&other.runtime.version)
     }
 }
 

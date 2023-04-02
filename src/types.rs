@@ -32,6 +32,7 @@ impl<'a> std::ops::Deref for AppWindow<'a> {
 pub trait UpdaterContext<Action> {
     fn window(&self) -> &AppWindow;
     fn updater(&self) -> &Arc<dyn Fn(Action) + Send + Sync>;
+    fn render(&self);
 }
 
 pub trait MessageContext<Action, DelegateMessage, Message>: UpdaterContext<Action> {

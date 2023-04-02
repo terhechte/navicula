@@ -2,6 +2,7 @@ use super::anyhashable::AnyHashable;
 use dioxus::prelude::*;
 use futures_util::{future::BoxFuture, StreamExt};
 use fxhash::FxHashMap;
+use std::cell::Cell;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::{rc::Rc, sync::Arc};
@@ -170,6 +171,7 @@ impl<'a, ParentR: Reducer> ViewStore<'a, ParentR> {
             window: AppWindow::retrieve(&cx),
             timers: Default::default(),
             updater: updater.clone(),
+            dirty: Cell::default(),
         };
 
         let view_store = run_reducer(cx, &mut context, child_state, environment, child_sender);
@@ -223,10 +225,20 @@ where
 
     let (child_sender, action_receiver) = cx.use_hook(|| flume::unbounded());
 
+    cx.use_hook(|| {
+        if let Some(initial_action) = R::initial_action() {
+            if let Err(e) = child_sender.send(initial_action) {
+                log::error!("Could not send initial action {e:?}");
+            }
+        }
+    });
+
     // go through the recievers and pull all messages in
     for r in receivers {
-        for entry in r.iter() {
-            child_sender.send(entry);
+        for entry in r.try_iter() {
+            if let Err(n) = child_sender.send(entry) {
+                log::error!("Could not send to parent: {n:?}");
+            };
         }
     }
 
@@ -253,6 +265,7 @@ where
             window: AppWindow::retrieve(&cx),
             timers: Default::default(),
             updater: updater.clone(),
+            dirty: Cell::default(),
         };
 
     let view_store = run_reducer(cx, &mut context, state, environment, child_sender);
@@ -275,6 +288,8 @@ pub struct ReducerContext<'a, Action, Message, DelegateMessage> {
     timers: FxHashMap<AnyHashable, tokio::task::JoinHandle<()>>,
     // Schedule an update
     updater: Arc<dyn Fn(Action) + Send + Sync>,
+    // Set the context to be dirty in this render iteration
+    dirty: Cell<bool>,
 }
 
 impl<'a, Action, Message: Clone, DelegateMessage> UpdaterContext<Action>
@@ -286,6 +301,10 @@ impl<'a, Action, Message: Clone, DelegateMessage> UpdaterContext<Action>
 
     fn window(&self) -> &AppWindow {
         &self.window
+    }
+
+    fn render(&self) {
+        self.dirty.set(true);
     }
 }
 
@@ -353,7 +372,7 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
     }
 
     // set up the coroutine that handles async actions
-    let cloned_sender = action_sender.clone();
+    let cloned_sender = sender.clone();
     let coroutine = use_coroutine(
         cx,
         |mut rx: UnboundedReceiver<BoxFuture<'_, R::Action>>| async move {
@@ -362,9 +381,7 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
 
                 tokio::task::spawn(async move {
                     let output = task.await;
-                    if let Err(e) = cloned_sender.send(output) {
-                        log::error!("Could not send coroutine result {e:?}");
-                    }
+                    cloned_sender.send(output);
                 });
             }
         },
@@ -395,6 +412,9 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
                 match effect {
                     InnerEffect::Future(fut) => {
                         coroutine.send(fut);
+                    }
+                    InnerEffect::FireForget(fut) => {
+                        tokio::spawn(async move { fut.await });
                     }
                     InnerEffect::Delay(d, e) => {
                         let cloned_later = later_effect.clone();
@@ -477,6 +497,9 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
             }
             break;
         }
+        if context.dirty.get() {
+            runtime.needs_update();
+        }
     }
 
     unsafe {
@@ -488,10 +511,10 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
     }
 }
 
-struct Drops(Box<dyn Fn()>);
+pub struct Drops(Box<dyn Fn()>);
 
 impl Drops {
-    fn action<'a, T>(cx: Scope<'a, T>, a: impl Fn() + 'static) {
+    pub fn action<'a, T>(cx: Scope<'a, T>, a: impl Fn() + 'static) {
         let boxed = Box::new(move || a());
         cx.use_hook(move || Drops(boxed));
     }
