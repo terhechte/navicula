@@ -1,5 +1,3 @@
-use std::borrow::BorrowMut;
-use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::RwLock;
 
@@ -15,8 +13,6 @@ pub(crate) struct Runtime<R: Reducer> {
     pub(crate) child_senders: RwLock<fxhash::FxHashMap<usize, Rc<dyn Fn(R::Message)>>>,
     /// Current subscriptions so they can be cleared on drop
     pub(crate) subscriptions: RwLock<Vec<AnySubscription>>,
-    /// Do we need a re-render
-    pub(crate) version: Cell<u64>,
 }
 
 impl<R: Reducer> Runtime<R> {
@@ -26,14 +22,7 @@ impl<R: Reducer> Runtime<R> {
             sender,
             child_senders: Default::default(),
             subscriptions: Default::default(),
-            version: Cell::new(0),
         }
-    }
-
-    pub(crate) fn needs_update(&self) {
-        let mut v = self.version.get();
-        v = v.wrapping_add(1);
-        self.version.set(v);
     }
 }
 

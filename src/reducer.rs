@@ -1,3 +1,5 @@
+use crate::types::ActionSender;
+
 use super::effect::Effect;
 use super::types::{EnvironmentType, MessageContext};
 
@@ -14,7 +16,7 @@ pub trait Reducer {
 
     /// The action is the internal type of the Reducer. It cannot
     /// be called or accessed by the outside
-    type Action: Clone + Send;
+    type Action: std::fmt::Debug + Clone + Send;
 
     /// The state that this reducer can act upon
     type State;
@@ -31,6 +33,10 @@ pub trait Reducer {
 
     /// Define the initial action when the reducer starts up
     fn initial_action() -> Option<Self::Action>;
+
+    /// This is called when the reducer is set up to allow a custom
+    /// initialization hook for other side effects
+    fn register_sideeffects(sender: &ActionSender<Self::Action>);
 }
 
 /// A child reducer has two additional requirements. Converting types back and forth via Message

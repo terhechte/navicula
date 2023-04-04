@@ -2,7 +2,6 @@ use super::anyhashable::AnyHashable;
 use dioxus::prelude::*;
 use futures_util::{future::BoxFuture, StreamExt};
 use fxhash::FxHashMap;
-use std::cell::Cell;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::{rc::Rc, sync::Arc};
@@ -170,7 +169,6 @@ impl<'a, ParentR: Reducer> ViewStore<'a, ParentR> {
             window: AppWindow::retrieve(&cx),
             timers: Default::default(),
             updater: updater.clone(),
-            dirty: Cell::default(),
         };
 
         let view_store = run_reducer(cx, &mut context, child_state, environment, child_sender);
@@ -264,7 +262,6 @@ where
             window: AppWindow::retrieve(&cx),
             timers: Default::default(),
             updater: updater.clone(),
-            dirty: Cell::default(),
         };
 
     let view_store = run_reducer(cx, &mut context, state, environment, child_sender);
@@ -287,8 +284,6 @@ pub struct ReducerContext<'a, Action, Message, DelegateMessage> {
     timers: FxHashMap<AnyHashable, tokio::task::JoinHandle<()>>,
     // Schedule an update
     updater: Arc<dyn Fn(Action) + Send + Sync>,
-    // Set the context to be dirty in this render iteration
-    dirty: Cell<bool>,
 }
 
 impl<'a, Action, Message: Clone, DelegateMessage> UpdaterContext<Action>
@@ -300,10 +295,6 @@ impl<'a, Action, Message: Clone, DelegateMessage> UpdaterContext<Action>
 
     fn window(&self) -> &AppWindow {
         &self.window
-    }
-
-    fn render(&self) {
-        self.dirty.set(true);
     }
 }
 
@@ -335,6 +326,11 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
         sender: action_sender.clone(),
         updater: updater.clone(),
     };
+
+    // Any additional side effects that require actions can be initialized on first start
+    cx.use_hook(|| {
+        R::register_sideeffects(&sender);
+    });
 
     let runtime: &UseState<Runtime<R>> = use_state(cx, || {
         Runtime::new(
@@ -497,9 +493,6 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
                 continue;
             }
             break;
-        }
-        if context.dirty.get() {
-            runtime.needs_update();
         }
     }
 

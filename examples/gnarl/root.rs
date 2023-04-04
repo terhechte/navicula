@@ -71,7 +71,9 @@ impl Reducer for RootReducer {
                 };
                 data.push(new_chat);
             }),
-            Action::Load => state.counter += 1,
+            Action::Load => {
+                state.counter += 1;
+            }
             Action::Selected(item) => {
                 let chat = environment
                     .chats
@@ -91,6 +93,8 @@ impl Reducer for RootReducer {
     fn initial_action() -> Option<Self::Action> {
         Some(Action::Initial)
     }
+
+    fn register_sideeffects(_sender: &navicula::types::ActionSender<Self::Action>) {}
 }
 
 #[inline_props]

@@ -22,12 +22,6 @@ impl<'a, R: Reducer> Clone for ViewStore<'a, R> {
     }
 }
 
-impl<'a, R: Reducer> PartialEq for ViewStore<'a, R> {
-    fn eq(&self, other: &Self) -> bool {
-        self.runtime.version.eq(&other.runtime.version)
-    }
-}
-
 impl<'a, R: Reducer> ViewStore<'a, R> {
     pub fn send(&self, action: R::Action) {
         self.runtime.get().sender.send(action);
