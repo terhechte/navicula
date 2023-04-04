@@ -118,8 +118,8 @@ impl<'a, ParentR: Reducer> ViewStore<'a, ParentR> {
         let delegate_sender = cx.use_hook(|| {
             move |action| {
                 let Some(converted) = ChildR::from_child(action) else {
-                return
-            };
+                    return
+                };
                 parent_sender.send(converted);
             }
         });
@@ -131,11 +131,10 @@ impl<'a, ParentR: Reducer> ViewStore<'a, ParentR> {
         cx.use_hook(|| {
             let sender = Rc::new(move |action| {
                 let Some(child_message) = ChildR::to_child(action) else {
-                    log::error!("failed to convert action for child");
                     return
                 };
                 if let Err(e) = cloned_child_sender.send(child_message) {
-                    log::error!("Could not send action to parent {e:?}");
+                    log::error!("Could not send action to child {e:?}");
                 }
                 updater();
             });
@@ -460,10 +459,11 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
                             let cloned_action = action;
 
                             {
-                                let (sender, receiver) = flume::unbounded();
-                                context.receivers.insert(id.id(), receiver);
+                                // let (sender, receiver) = cx.use_hook(|| flume::unbounded());
+                                // context.receivers.insert(id.id(), receiver.clone());
 
-                                let cloned_updater = updater.clone();
+                                // let cloned_updater = updater.clone();
+                                let cloned_sender = sender.clone();
                                 context.timers.insert(
                                     id,
                                     tokio::spawn(async move {
@@ -474,10 +474,11 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
                                                 ),
                                             )
                                             .await;
-                                            if let Err(e) = sender.send(cloned_action.clone()) {
-                                                log::error!("Could not send timer {e:?}");
-                                            }
-                                            cloned_updater();
+                                            // if let Err(e) = sender.send(cloned_action.clone()) {
+                                            //     log::error!("Could not send timer {e:?}");
+                                            // }
+                                            // cloned_updater();
+                                            cloned_sender.send(cloned_action.clone());
                                         }
                                     }),
                                 )
