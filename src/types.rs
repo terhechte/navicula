@@ -37,6 +37,7 @@ pub trait UpdaterContext<Action> {
 pub trait MessageContext<Action, DelegateMessage, Message>: UpdaterContext<Action> {
     fn send_parent(&self, message: DelegateMessage);
     fn send_children(&self, message: Message);
+    fn children(&self) -> Vec<std::rc::Rc<dyn Fn(Message)>>;
 }
 
 #[derive(Clone)]

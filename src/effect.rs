@@ -15,7 +15,10 @@ pub(super) enum InnerEffect<'a, A> {
     /// Execute the following javascript, ignore the result
     Ui(String),
     /// Execute the following javascript, but also get the result back and convert into an action
-    UiFuture(Pin<Box<dyn Future<Output = Option<A>> + 'static>>),
+    UiFuture(
+        String,
+        Box<dyn Fn(serde_json::Value) -> Pin<Box<dyn Future<Output = A> + Send>>>,
+    ),
     /// Maybe a better solution? Timer. the u64 parameter can be used to cancel it again
     Timer(Duration, A, AnyHashable),
     CancelTimer(AnyHashable),
@@ -112,8 +115,14 @@ impl<'a, A> Effect<'a, A> {
         Self(InnerEffect::Ui(s.as_ref().to_string()))
     }
 
-    pub fn ui_future(fut: impl Future<Output = Option<A>> + 'static) -> Self {
-        Self(InnerEffect::UiFuture(Box::pin(fut)))
+    pub fn ui_future(
+        js: impl AsRef<str>,
+        action: impl Fn(serde_json::Value) -> Pin<Box<dyn Future<Output = A> + Send>> + 'static,
+    ) -> Self {
+        Self(InnerEffect::UiFuture(
+            js.as_ref().to_string(),
+            Box::new(action),
+        ))
     }
 
     // FIXME: Maybe return a token that will cancel the timer on drop?

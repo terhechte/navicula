@@ -90,8 +90,6 @@ impl Reducer for ChatChildReducer {
     fn initial_action() -> Option<Self::Action> {
         Some(Action::Initial)
     }
-
-    fn register_sideeffects(_sender: &navicula::types::ActionSender<Self::Action>) {}
 }
 
 // Implement the conversion for the `Root` parent
@@ -212,8 +210,6 @@ mod edit {
         fn initial_action() -> Option<Self::Action> {
             Some(EditAction::Initial)
         }
-
-        fn register_sideeffects(_sender: &navicula::types::ActionSender<Self::Action>) {}
     }
 
     impl ChildReducer<ChatChildReducer> for EditReducer {

@@ -1,5 +1,3 @@
-use crate::types::ActionSender;
-
 use super::effect::Effect;
 use super::types::{EnvironmentType, MessageContext};
 
@@ -33,10 +31,6 @@ pub trait Reducer {
 
     /// Define the initial action when the reducer starts up
     fn initial_action() -> Option<Self::Action>;
-
-    /// This is called when the reducer is set up to allow a custom
-    /// initialization hook for other side effects
-    fn register_sideeffects(sender: &ActionSender<Self::Action>);
 }
 
 /// A child reducer has two additional requirements. Converting types back and forth via Message

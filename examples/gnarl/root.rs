@@ -93,8 +93,6 @@ impl Reducer for RootReducer {
     fn initial_action() -> Option<Self::Action> {
         Some(Action::Initial)
     }
-
-    fn register_sideeffects(_sender: &navicula::types::ActionSender<Self::Action>) {}
 }
 
 #[inline_props]

@@ -89,8 +89,6 @@ impl Reducer for SidebarChildReducer {
     fn initial_action() -> Option<Self::Action> {
         Some(Action::Initial)
     }
-
-    fn register_sideeffects(_sender: &navicula::types::ActionSender<Self::Action>) {}
 }
 
 // Implement the conversion for the `Root` parent

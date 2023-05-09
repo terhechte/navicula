@@ -310,6 +310,10 @@ impl<'a, Action, Message: Clone, DelegateMessage> MessageContext<Action, Delegat
             (*child)(message.clone());
         }
     }
+
+    fn children(&self) -> Vec<std::rc::Rc<dyn Fn(Message)>> {
+        self.child_messages.clone()
+    }
 }
 
 fn run_reducer<'a, T, R: Reducer + 'static>(
@@ -326,11 +330,6 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
         sender: action_sender.clone(),
         updater: updater.clone(),
     };
-
-    // Any additional side effects that require actions can be initialized on first start
-    cx.use_hook(|| {
-        R::register_sideeffects(&sender);
-    });
 
     let runtime: &UseState<Runtime<R>> = use_state(cx, || {
         Runtime::new(
@@ -441,11 +440,20 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
                             eval(s);
                         });
                     }
-                    InnerEffect::UiFuture(fut) => {
-                        let cloned_sender = sender.clone();
+                    InnerEffect::UiFuture(js, action) => {
+                        let eval = eval.clone();
+                        let cloned_coroutine = coroutine.clone();
                         cx.push_future(async move {
-                            if let Some(n) = fut.await {
-                                cloned_sender.send(n);
+                            let result = eval(js).await;
+                            match result {
+                                Ok(r) => {
+                                    let fut = action(r);
+                                    // additions.push(InnerEffect::Future(fut));
+                                    cloned_coroutine.send(fut);
+                                }
+                                Err(e) => {
+                                    log::error!("Could not send future {e:?}");
+                                }
                             }
                         });
                     }

@@ -28,8 +28,15 @@ impl<'a, R: Reducer> ViewStore<'a, R> {
     }
 
     pub fn sender(&self) -> ActionSender<R::Action> {
-        //self.runtime.read().sender.clone()
         self.runtime.get().sender.clone()
+    }
+
+    pub fn sender_fn<O>(
+        &self,
+        mapper: impl Fn(O) -> R::Action + Send + Sync + 'static,
+    ) -> std::sync::Arc<dyn Fn(O) + Send + Sync> {
+        let s = self.runtime.get().sender.clone();
+        std::sync::Arc::new(move |a| s.send(mapper(a)))
     }
 }
 
