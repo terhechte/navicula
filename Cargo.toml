@@ -8,8 +8,6 @@ edition = "2021"
 [dependencies]
 dioxus = { git = "https://github.com/terhechte/dioxus.git", branch = "dioxus_macos_hacks"}
 dioxus-desktop = { git = "https://github.com/terhechte/dioxus.git", branch = "dioxus_macos_hacks"}
-#dioxus = { path = "/Users/terhechte/Development/temporary/dioxus_clone/packages/dioxus" }
-#dioxus-desktop = { path = "/Users/terhechte/Development/temporary/dioxus_clone/packages/desktop" }
 futures-util = "0.3.21"
 futures-channel = "0.3.25"
 flume = "0.10.14"
