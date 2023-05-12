@@ -1,4 +1,4 @@
-use std::{pin::Pin, time::Duration};
+use std::time::Duration;
 
 use futures_util::{future::BoxFuture, Future, FutureExt};
 
@@ -15,10 +15,7 @@ pub(super) enum InnerEffect<'a, A> {
     /// Execute the following javascript, ignore the result
     Ui(String),
     /// Execute the following javascript, but also get the result back and convert into an action
-    UiFuture(
-        String,
-        Box<dyn Fn(serde_json::Value) -> Pin<Box<dyn Future<Output = A> + Send>>>,
-    ),
+    UiFuture(String, Box<dyn Fn(serde_json::Value) -> Option<A>>),
     /// Maybe a better solution? Timer. the u64 parameter can be used to cancel it again
     Timer(Duration, A, AnyHashable),
     CancelTimer(AnyHashable),
@@ -117,7 +114,7 @@ impl<'a, A> Effect<'a, A> {
 
     pub fn ui_future(
         js: impl AsRef<str>,
-        action: impl Fn(serde_json::Value) -> Pin<Box<dyn Future<Output = A> + Send>> + 'static,
+        action: impl Fn(serde_json::Value) -> Option<A> + 'static,
     ) -> Self {
         Self(InnerEffect::UiFuture(
             js.as_ref().to_string(),

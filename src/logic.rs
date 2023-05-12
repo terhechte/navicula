@@ -441,15 +441,16 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
                         });
                     }
                     InnerEffect::UiFuture(js, action) => {
+                        let cloned = sender.clone();
                         let eval = eval.clone();
-                        let cloned_coroutine = coroutine.clone();
                         cx.push_future(async move {
                             let result = eval(js).await;
                             match result {
                                 Ok(r) => {
-                                    let fut = action(r);
-                                    // additions.push(InnerEffect::Future(fut));
-                                    cloned_coroutine.send(fut);
+                                    let result = action(r);
+                                    if let Some(r) = result {
+                                        cloned.send(r);
+                                    }
                                 }
                                 Err(e) => {
                                     log::error!("Could not send future {e:?}");
