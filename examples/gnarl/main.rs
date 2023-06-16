@@ -32,9 +32,9 @@ fn main() {
 
 pub struct AppProps {}
 
-pub fn app<'a>(cx: Scope<'a, AppProps>) -> Element<'a> {
+pub fn app(cx: Scope<'_, AppProps>) -> Element<'_> {
     let environment = use_state(cx, || model::Environment::new(model::mock::chats()));
-    let store = navicula::logic::root(cx, &[], environment.get(), || root::State::new());
+    let store = navicula::logic::root(cx, &[], environment.get(), root::State::default);
     render! {
         root::root {
             store: store

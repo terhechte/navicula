@@ -14,7 +14,7 @@ impl<'a> SimpleHashable for &'a str {
     }
 }
 
-impl<'a> SimpleHashable for String {
+impl SimpleHashable for String {
     fn hashed(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
         self.hash(&mut hasher);
@@ -22,7 +22,7 @@ impl<'a> SimpleHashable for String {
     }
 }
 
-impl<'a> SimpleHashable for &String {
+impl SimpleHashable for &String {
     fn hashed(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
         self.hash(&mut hasher);
@@ -48,25 +48,25 @@ impl AnyHashable {
     }
 }
 
-impl<'a> From<&str> for AnyHashable {
+impl From<&str> for AnyHashable {
     fn from(value: &str) -> Self {
         AnyHashable(value.hashed())
     }
 }
 
-impl<'a> From<String> for AnyHashable {
+impl From<String> for AnyHashable {
     fn from(value: String) -> Self {
         AnyHashable(value.hashed())
     }
 }
 
-impl<'a> From<&String> for AnyHashable {
+impl From<&String> for AnyHashable {
     fn from(value: &String) -> Self {
         AnyHashable(value.hashed())
     }
 }
 
-impl<'a> From<usize> for AnyHashable {
+impl From<usize> for AnyHashable {
     fn from(value: usize) -> Self {
         AnyHashable(value.hashed())
     }

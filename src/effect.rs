@@ -65,7 +65,7 @@ impl<'a, A> Effect<'a, A> {
         M: FnOnce(T) -> A + Send + Sync + 'a,
     {
         Self(InnerEffect::Future(Box::pin(async move {
-            fu.map(move |o| mapper(o)).await
+            fu.map(mapper).await
         })))
     }
 
@@ -91,8 +91,7 @@ impl<'a, A> Effect<'a, A> {
                 return mapper(None);
             }
 
-            let o = fu.map(move |o| mapper(Some(o))).await;
-            o
+            fu.map(move |o| mapper(Some(o))).await
         })))
     }
 

@@ -35,7 +35,7 @@ impl<'a, ParentR: Reducer> ViewStore<'a, ParentR> {
         ChildR: 'static,
         ParentR: 'static,
     {
-        let (child_sender, child_receiver) = cx.use_hook(|| flume::unbounded());
+        let (child_sender, child_receiver) = cx.use_hook(flume::unbounded);
 
         // Send the initial action once.
         cx.use_hook(|| {
@@ -47,7 +47,7 @@ impl<'a, ParentR: Reducer> ViewStore<'a, ParentR> {
         });
 
         let last = use_ref(cx, move || value.clone());
-        let reset_state = last.with(|last_rf| if last_rf.ne(&value) { true } else { false });
+        let reset_state = last.with(|last_rf| last_rf.ne(value));
 
         let child_state = cx.use_hook(|| MaybeUninit::new(state(value.clone())));
 
@@ -80,7 +80,7 @@ impl<'a, ParentR: Reducer> ViewStore<'a, ParentR> {
     {
         let child_state = cx.use_hook(|| MaybeUninit::new(state()));
 
-        let (child_sender, child_receiver) = cx.use_hook(|| flume::unbounded());
+        let (child_sender, child_receiver) = cx.use_hook(flume::unbounded);
 
         // Send the initial action once.
         cx.use_hook(|| {
@@ -166,7 +166,7 @@ impl<'a, ParentR: Reducer> ViewStore<'a, ParentR> {
             receivers: Default::default(),
             delegate_messages: &*delegate_sender,
             child_messages: Vec::new(),
-            window: AppWindow::retrieve(&cx),
+            window: AppWindow::retrieve(cx),
             timers: Default::default(),
             updater: updater.clone(),
         };
@@ -220,7 +220,7 @@ where
 {
     let state = cx.use_hook(|| MaybeUninit::new(state()));
 
-    let (child_sender, action_receiver) = cx.use_hook(|| flume::unbounded());
+    let (child_sender, action_receiver) = cx.use_hook(flume::unbounded);
 
     cx.use_hook(|| {
         if let Some(initial_action) = R::initial_action() {
@@ -259,7 +259,7 @@ where
             receivers: Default::default(),
             delegate_messages: &*delegate_sender,
             child_messages: Vec::new(),
-            window: AppWindow::retrieve(&cx),
+            window: AppWindow::retrieve(cx),
             timers: Default::default(),
             updater: updater.clone(),
         };
@@ -381,7 +381,7 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
         },
     );
 
-    let eval = dioxus_desktop::use_eval(&cx);
+    let eval = dioxus_desktop::use_eval(cx);
 
     // Special handling for the delay action. This will return an Effect, not an Action, so we need
     // a way to handle running this code again once an effect has been created at a later point in time
@@ -398,7 +398,7 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
     }
 
     if !effects.is_empty() {
-        let mut current_state = unsafe { state.assume_init_mut() };
+        let current_state = unsafe { state.assume_init_mut() };
 
         loop {
             let mut additions: Vec<InnerEffect<'_, R::Action>> = Vec::with_capacity(2);
@@ -413,7 +413,7 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
                     InnerEffect::Delay(d, e) => {
                         let cloned_later = later_effect.clone();
                         cx.push_future(async move {
-                            tokio::time::sleep(d.into()).await;
+                            tokio::time::sleep(d).await;
                             let unwrapped = *e;
                             cloned_later.with_mut(|w| {
                                 w.replace(unwrapped);
@@ -421,8 +421,7 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
                         });
                     }
                     InnerEffect::Action(action) => {
-                        let next =
-                            R::reduce(&*context, action, &mut current_state, environment.deref());
+                        let next = R::reduce(&*context, action, current_state, environment.deref());
                         additions.push(next.inner());
                         continue;
                     }
@@ -479,10 +478,6 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
                                                 ),
                                             )
                                             .await;
-                                            // if let Err(e) = sender.send(cloned_action.clone()) {
-                                            //     log::error!("Could not send timer {e:?}");
-                                            // }
-                                            // cloned_updater();
                                             cloned_sender.send(cloned_action.clone());
                                         }
                                     }),
@@ -517,8 +512,8 @@ fn run_reducer<'a, T, R: Reducer + 'static>(
 pub struct Drops(Box<dyn Fn()>);
 
 impl Drops {
-    pub fn action<'a, T>(cx: Scope<'a, T>, a: impl Fn() + 'static) {
-        let boxed = Box::new(move || a());
+    pub fn action<T>(cx: Scope<'_, T>, a: impl Fn() + 'static) {
+        let boxed = Box::new(a);
         cx.use_hook(move || Drops(boxed));
     }
 }

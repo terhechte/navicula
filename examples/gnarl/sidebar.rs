@@ -10,18 +10,10 @@ use navicula::{
 
 pub struct SidebarChildReducer {}
 
+#[derive(Default)]
 pub struct State {
     chats: Vec<Chat>,
     counter: usize,
-}
-
-impl State {
-    pub fn new() -> Self {
-        State {
-            chats: Default::default(),
-            counter: 0,
-        }
-    }
 }
 
 #[derive(Clone)]

@@ -32,6 +32,7 @@ pub trait Subscription {
 #[derive(Clone)]
 pub struct RefSubscription<Data> {
     id: u64,
+    #[allow(clippy::type_complexity)]
     subscribers: Rc<RwLock<FxHashMap<u64, Box<dyn Fn(Rc<RefCell<Data>>) + Send + Sync>>>>,
 }
 
@@ -61,6 +62,7 @@ pub struct RefPublisher<Data> {
     version: Rc<Cell<u64>>,
     /// subscribe to storage changes. We're not using a `RefCell` as that can lead
     /// to multiple borrow crashes here
+    #[allow(clippy::type_complexity)]
     subscribers: Rc<RwLock<FxHashMap<u64, Box<dyn Fn(Rc<RefCell<Data>>) + Send + Sync>>>>,
 }
 

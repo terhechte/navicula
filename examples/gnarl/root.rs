@@ -27,18 +27,10 @@ pub enum Action {
     ClosedMessage,
 }
 
+#[derive(Default)]
 pub struct State {
     counter: usize,
     selected: Option<Chat>,
-}
-
-impl State {
-    pub fn new() -> Self {
-        State {
-            counter: 0,
-            selected: None,
-        }
-    }
 }
 
 impl Reducer for RootReducer {
@@ -77,7 +69,7 @@ impl Reducer for RootReducer {
             Action::Selected(item) => {
                 let chat = environment
                     .chats
-                    .with(|chats| chats.iter().find(|s| s.id == item).map(|e| e.clone()));
+                    .with(|chats| chats.iter().find(|s| s.id == item).cloned());
                 state.selected = chat;
             }
             Action::Reload => {
@@ -124,7 +116,7 @@ fn sidebar<'a>(cx: Scope<'a>, store: &'a ViewStore<'a, RootReducer>) -> Element<
             }
         }
         crate::sidebar::root {
-            store: store.host(cx, || crate::sidebar::State::new())
+            store: store.host(cx, crate::sidebar::State::default)
         }
     }
 }
@@ -140,7 +132,7 @@ fn selected_message<'a>(
     render! {
         crate::chat::root {
             key: "{chat.id}",
-            store: store.host_with(cx, *chat, |s| crate::chat::State::new(s)),
+            store: store.host_with(cx, *chat, crate::chat::State::new),
         }
     }
 }

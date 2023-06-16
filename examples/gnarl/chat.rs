@@ -20,7 +20,7 @@ pub struct State {
 
 impl State {
     pub fn new(chat: Chat) -> Self {
-        Self { chat: chat.clone() }
+        Self { chat }
     }
 }
 
@@ -121,13 +121,13 @@ pub fn root<'a>(cx: Scope<'a>, store: ViewStore<'a, ChatChildReducer>) -> Elemen
             }
             for message in store.chat.messages.iter() {
                 self::message {
-                    message: &message,
+                    message: message,
                     store: store
                 }
             }
             hr {}
             edit::root {
-                store: store.host(cx, || Default::default())
+                store: store.host(cx, Default::default)
             }
         }
     }

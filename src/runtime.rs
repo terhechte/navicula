@@ -10,6 +10,7 @@ pub(crate) struct Runtime<R: Reducer> {
     /// Send an action that will be processed afterwards
     pub(crate) sender: ActionSender<R::Action>,
     /// The current registered children. Used to send them messages
+    #[allow(clippy::type_complexity)]
     pub(crate) child_senders: RwLock<fxhash::FxHashMap<usize, Rc<dyn Fn(R::Message)>>>,
     /// Current subscriptions so they can be cleared on drop
     pub(crate) subscriptions: RwLock<Vec<AnySubscription>>,
